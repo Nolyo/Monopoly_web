@@ -31,17 +31,31 @@ export const CHEST_CARDS = [
 ];
 
 export function makeDeck(cards, rng = Math.random) {
-  const deck = [...cards];
-  for (let i = deck.length - 1; i > 0; i--) {
+  const order = cards.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
+    [order[i], order[j]] = [order[j], order[i]];
   }
-  let pointer = 0;
+  return deckFrom(cards, order, 0);
+}
+
+// Reconstruit une pioche depuis un état sauvegardé (suppose un état valide,
+// garanti en amont par le contrôle de version du stockage).
+export function restoreDeck(cards, state) {
+  return deckFrom(cards, state.order, state.pointer);
+}
+
+function deckFrom(cards, order, pointer) {
+  let ptr = pointer;
+  const seq = [...order];
   return {
     draw() {
-      const card = deck[pointer];
-      pointer = (pointer + 1) % deck.length;
+      const card = cards[seq[ptr]];
+      ptr = (ptr + 1) % seq.length;
       return card;
+    },
+    state() {
+      return { order: [...seq], pointer: ptr };
     },
   };
 }
