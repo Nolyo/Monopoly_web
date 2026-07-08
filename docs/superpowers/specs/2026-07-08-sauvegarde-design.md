@@ -38,16 +38,17 @@ privée…), le jeu fonctionne normalement, simplement sans sauvegarde.
 
 ### Sérialisation dans le moteur (`src/game/engine.js`)
 
-- `Game.serialize()` retourne un objet JSON :
-  - `version` (numéro de schéma, `1` au départ), `savedAt` (date ISO) ;
+- `Game.serialize()` retourne l'état **pur** du jeu en JSON (l'enveloppe
+  `{ version, savedAt, state }` est ajoutée par `storage.js`, qui possède le
+  numéro de schéma — `1` au départ) :
   - `turnCount`, `current` (index du joueur dont c'est le tour) ;
   - `players` : pour chaque joueur — `name`, `color`, `isAI`, `money`, `pos`,
     `inJail`, `jailTurns`, `getOutCards`, `bankrupt` ;
   - `tiles` : pour chaque case, uniquement les champs mutables — `owner`, `houses`,
     `mortgaged` (le reste vient toujours de `data.js`), tableau aligné sur `TILES` ;
   - `decks` : état des pioches Chance et Caisse (voir ci-dessous).
-- Le constructeur de `Game` accepte un snapshot optionnel : au lieu de créer une
-  partie neuve, il restaure joueurs, cases, pioches, `current` et `turnCount`
+- Une fabrique statique `Game.fromSnapshot(snapshot, view)` restaure joueurs,
+  cases, pioches, `current` et `turnCount` au lieu de créer une partie neuve
   (pas de re-mélange, pas de remise à zéro).
 - Dans la boucle `run()`, au début de chaque tour, le moteur émet le snapshot via un
   hook (ex. `onAutoSave`) branché par `main.js` sur `storage.saveGame`.
