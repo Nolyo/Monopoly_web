@@ -119,6 +119,14 @@ html, body {
 #speed { background: #1d2733; color: var(--text); border: none; border-radius: 5px; padding: 2px 6px; margin-left: 5px; }
 #hint { font-size: 11px; color: rgba(255,255,255,0.35); max-width: 320px; text-align: right; }
 
+#ctrl-row { display: flex; gap: 6px; align-items: stretch; }
+#mute-btn {
+  background: var(--panel); border: 1px solid var(--panel-border);
+  border-radius: 8px; padding: 5px 10px; font-size: 14px;
+  color: var(--text); cursor: pointer;
+}
+#mute-btn:hover { background: #223041; }
+
 /* ------------------------------------------------- boutons */
 .action-btn {
   background: #223041;

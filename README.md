@@ -35,6 +35,7 @@ npm run preview
 - **IA à heuristiques** : achète en priorité ce qui complète ses groupes ou bloque les vôtres, construit sur ses monopoles, gère ses liquidités (hypothèque/vend en cas de besoin), choisit sa stratégie de sortie de prison selon l'avancement de la partie.
 - **Confort** : journal de partie, titres de propriété consultables en cliquant sur les cases, vitesse de jeu réglable (×1 à ×3).
 - 💾 **Sauvegarde automatique** : la partie en cours est sauvegardée dans le navigateur à chaque tour. Au retour, choisissez « Reprendre la partie » ou « Nouvelle partie ».
+- 🔊 **Bruitages** — dés, déplacements, argent, prison, victoire… (sons CC0 de [Kenney](https://kenney.nl)) ; bouton 🔊/🔇 pour couper le son, choix mémorisé
 
 ## 🧱 Architecture
 

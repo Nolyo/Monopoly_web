@@ -3,6 +3,7 @@ import { Game } from './game/engine.js';
 import { UI, escapeHtml } from './ui/ui.js';
 import { PLAYER_COLORS } from './game/data.js';
 import { saveGame, loadGame, clearSave } from './game/storage.js';
+import { initSounds, playSound, toggleMute, isMuted } from './ui/sound.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -99,11 +100,17 @@ async function startGame(configs, snapshot = null) {
   const scene = new Board3D($('#app'));
   const ui = new UI();
 
+  initSounds(); // appelé après un clic utilisateur : l'audio est autorisé
+  const muteBtn = $('#mute-btn');
+  muteBtn.textContent = isMuted() ? '🔇' : '🔊';
+  muteBtn.onclick = () => { muteBtn.textContent = toggleMute() ? '🔇' : '🔊'; };
+
   $('#speed').onchange = (e) => { scene.speed = Number(e.target.value); };
 
   const view = {
     log: (msg, cls) => ui.log(msg, cls),
     updatePlayers: () => ui.updatePlayers(),
+    sfx: (name) => playSound(name),
 
     async onTurnStart(p) {
       ui.setTurnBanner(p);
@@ -122,6 +129,7 @@ async function startGame(configs, snapshot = null) {
     },
 
     async showDice(d1, d2) {
+      playSound('dice');
       ui.log(`🎲 ${d1} + ${d2} = ${d1 + d2}`);
       await scene.rollDice(d1, d2);
     },
@@ -133,6 +141,7 @@ async function startGame(configs, snapshot = null) {
     setMortgaged: (idx, m) => scene.setMortgaged(idx, m),
 
     async showCard(deckName, text, p) {
+      playSound('card');
       if (p.isAI) {
         const label = deckName === 'chance' ? '❓ Chance' : '🧰 Caisse';
         ui.log(`${label} (${p.name}) : ${text}`, 'card');
@@ -152,13 +161,14 @@ async function startGame(configs, snapshot = null) {
     promptRaiseMoney: (p, amount) => ui.promptRaiseMoney(p, amount),
 
     async onBankruptcy(p, creditor) {
+      playSound('bankrupt');
       scene.removeToken(p.id);
       await ui.onBankruptcy(p, creditor);
     },
 
     managePhase: (p) => ui.managePhase(p),
     aiThink: () => scene.delay(450),
-    announceWinner: (p) => { clearSave(); return ui.announceWinner(p); },
+    announceWinner: (p) => { clearSave(); playSound('win'); return ui.announceWinner(p); },
   };
 
   const game = snapshot ? Game.fromSnapshot(snapshot, view) : new Game(configs, view);
@@ -169,6 +179,7 @@ async function startGame(configs, snapshot = null) {
     if ($('#modal-root').childElementCount > 0) return;
     ui.showDeed(idx);
   };
+  scene.onHop = () => playSound('hop');
 
   scene.createTokens(game.players);
   if (snapshot) {

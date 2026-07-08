@@ -275,6 +275,7 @@ export class Board3D {
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.onTileClick = null;
+    this.onHop = null; // son de pas, branché par main.js
     this.buildHitboxes();
     this.renderer.domElement.addEventListener('pointerdown', (e) => { this.downXY = [e.clientX, e.clientY]; });
     this.renderer.domElement.addEventListener('pointerup', (e) => this.handleClick(e));
@@ -492,6 +493,7 @@ export class Board3D {
   }
 
   async hopToken(playerIdx, fromTile, toTile) {
+    this.onHop?.();
     const token = this.tokens[playerIdx];
     const a = this.tokenWorldPos(playerIdx, fromTile);
     const b = this.tokenWorldPos(playerIdx, toTile);
