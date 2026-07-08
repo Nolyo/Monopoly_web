@@ -33,4 +33,49 @@ function seededRng(seed) {
   assert.notEqual(restored.state().order[0], 999);
 }
 
+// --- Stockage : save/load/clear -------------------------------------------
+{
+  // Faux localStorage pour Node
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  const { saveGame, loadGame, clearSave } = await import('../src/game/storage.js');
+  const KEY = 'monopoly3d.save.v1';
+
+  // aller-retour
+  saveGame({ turnCount: 4, current: 1 });
+  const loaded = loadGame();
+  assert.equal(loaded.version, 1);
+  assert.ok(typeof loaded.savedAt === 'string' && loaded.savedAt.length > 0);
+  assert.deepEqual(loaded.state, { turnCount: 4, current: 1 });
+
+  // clearSave
+  clearSave();
+  assert.equal(loadGame(), null);
+
+  // JSON corrompu → null + clé nettoyée
+  mem.set(KEY, '{pas du json');
+  assert.equal(loadGame(), null);
+  assert.equal(mem.has(KEY), false);
+
+  // version incompatible → null + clé nettoyée
+  mem.set(KEY, JSON.stringify({ version: 99, savedAt: 'x', state: {} }));
+  assert.equal(loadGame(), null);
+  assert.equal(mem.has(KEY), false);
+
+  // stockage qui lève (mode privé…) → aucune exception
+  globalThis.localStorage = {
+    getItem: () => { throw new Error('indisponible'); },
+    setItem: () => { throw new Error('indisponible'); },
+    removeItem: () => { throw new Error('indisponible'); },
+  };
+  saveGame({ a: 1 });
+  assert.equal(loadGame(), null);
+  clearSave();
+}
+
+console.log('✅ storage.js : stockage OK');
 console.log('✅ cards.js : pioches sérialisables OK');
