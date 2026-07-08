@@ -33,6 +33,8 @@ function seededRng(seed) {
   assert.notEqual(restored.state().order[0], 999);
 }
 
+console.log('✅ cards.js : pioches sérialisables OK');
+
 // --- Stockage : save/load/clear -------------------------------------------
 {
   // Faux localStorage pour Node
@@ -46,11 +48,14 @@ function seededRng(seed) {
   const KEY = 'monopoly3d.save.v1';
 
   // aller-retour
-  saveGame({ turnCount: 4, current: 1 });
+  const fakeState = {
+    turnCount: 4, current: 1, players: [], tiles: [], decks: {},
+  };
+  saveGame(fakeState);
   const loaded = loadGame();
   assert.equal(loaded.version, 1);
   assert.ok(typeof loaded.savedAt === 'string' && loaded.savedAt.length > 0);
-  assert.deepEqual(loaded.state, { turnCount: 4, current: 1 });
+  assert.deepEqual(loaded.state, fakeState);
 
   // clearSave
   clearSave();
@@ -66,6 +71,14 @@ function seededRng(seed) {
   assert.equal(loadGame(), null);
   assert.equal(mem.has(KEY), false);
 
+  // version correcte mais state mal formé → null + clé nettoyée
+  mem.set(KEY, JSON.stringify({ version: 1, savedAt: 'x', state: {} }));
+  assert.equal(loadGame(), null);
+  assert.equal(mem.has(KEY), false);
+  mem.set(KEY, JSON.stringify({ version: 1, savedAt: 'x', state: { players: [], tiles: [] } }));
+  assert.equal(loadGame(), null); // decks manquant
+  assert.equal(mem.has(KEY), false);
+
   // stockage qui lève (mode privé…) → aucune exception
   globalThis.localStorage = {
     getItem: () => { throw new Error('indisponible'); },
@@ -78,7 +91,6 @@ function seededRng(seed) {
 }
 
 console.log('✅ storage.js : stockage OK');
-console.log('✅ cards.js : pioches sérialisables OK');
 
 // --- Moteur : serialize() / fromSnapshot() ---------------------------------
 {
@@ -127,3 +139,28 @@ console.log('✅ cards.js : pioches sérialisables OK');
 }
 
 console.log('✅ engine.js : serialize/fromSnapshot OK');
+
+// --- Moteur : le hook onAutoSave est appelé à chaque tour dans run() -------
+{
+  const { Game } = await import('../src/game/engine.js');
+  // le hook est appelé à chaque tour pendant run(), avant l'incrément de turnCount
+  const stubView = new Proxy({}, { get: () => () => {} });
+  const g3 = new Game(
+    [{ name: 'IA 1', color: '#e0453a', isAI: true }, { name: 'IA 2', color: '#3a7de0', isAI: true }],
+    stubView,
+    seededRng(42),
+  );
+  const saves = [];
+  g3.onAutoSave = (state) => {
+    saves.push(state);
+    if (saves.length >= 4) g3.over = true;
+  };
+  await g3.run();
+  assert.equal(saves.length, 4);
+  saves.forEach((s, i) => {
+    assert.equal(s.turnCount, i); // snapshot pris avant l'incrément
+    assert.equal(s.players[s.current].bankrupt, false); // current toujours vivant
+  });
+}
+
+console.log('✅ engine.js : hook onAutoSave appelé à chaque tour de run() OK');
