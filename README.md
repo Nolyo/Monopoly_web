@@ -34,6 +34,7 @@ npm run preview
   - Faillites : les biens reviennent au créancier, dernier joueur en lice gagne.
 - **IA à heuristiques** : achète en priorité ce qui complète ses groupes ou bloque les vôtres, construit sur ses monopoles, gère ses liquidités (hypothèque/vend en cas de besoin), choisit sa stratégie de sortie de prison selon l'avancement de la partie.
 - **Confort** : journal de partie, titres de propriété consultables en cliquant sur les cases, vitesse de jeu réglable (×1 à ×3).
+- 💾 **Sauvegarde automatique** : la partie en cours est sauvegardée dans le navigateur à chaque tour. Au retour, choisissez « Reprendre la partie » ou « Nouvelle partie ».
 
 ## 🧱 Architecture
 
