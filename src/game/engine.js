@@ -180,6 +180,7 @@ export class Game {
     p.inJail = true;
     p.jailTurns = 0;
     p.pos = JAIL_INDEX;
+    this.view.sfx?.('jail');
     await this.view.teleportToken(p, JAIL_INDEX);
     this.view.updatePlayers();
   }
@@ -191,6 +192,7 @@ export class Game {
     await this.view.moveTokenSteps(p, from, steps);
     if (passesGo) {
       p.money += GO_SALARY;
+      this.view.sfx?.('cash');
       this.view.log(`${p.name} passe par la case Départ et reçoit ${GO_SALARY} €.`, 'good');
       this.view.updatePlayers();
     }
@@ -265,6 +267,7 @@ export class Game {
     const tile = this.tiles[idx];
     p.money -= tile.price;
     tile.owner = p.id;
+    this.view.sfx?.('buy');
     this.view.log(`${p.name} achète ${tile.name} pour ${tile.price} €.`, 'good');
     this.view.setOwner(idx, p);
     this.view.updatePlayers();
@@ -319,6 +322,7 @@ export class Game {
       case 'money':
         if (e.amount >= 0) {
           p.money += e.amount;
+          this.view.sfx?.('cash');
           this.view.log(`${p.name} reçoit ${e.amount} €.`, 'good');
         } else {
           await this.charge(p, -e.amount, null, 'la carte');
@@ -372,6 +376,7 @@ export class Game {
     if (p.money >= amount) {
       p.money -= amount;
       if (toPlayer) toPlayer.money += amount;
+      this.view.sfx?.('pay');
       this.view.updatePlayers();
       return;
     }
@@ -454,6 +459,7 @@ export class Game {
     const p = this.players[playerId];
     p.money -= t.houseCost;
     t.houses++;
+    this.view.sfx?.('build');
     this.view.log(`${p.name} construit ${t.houses === 5 ? 'un hôtel' : 'une maison'} sur ${t.name}.`, 'good');
     this.view.setHouses(idx, t.houses);
     this.view.updatePlayers();
