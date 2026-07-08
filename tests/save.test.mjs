@@ -79,3 +79,51 @@ function seededRng(seed) {
 
 console.log('✅ storage.js : stockage OK');
 console.log('✅ cards.js : pioches sérialisables OK');
+
+// --- Moteur : serialize() / fromSnapshot() ---------------------------------
+{
+  const { Game } = await import('../src/game/engine.js');
+  const configs = [
+    { name: 'Alice', color: '#e0453a', isAI: false },
+    { name: 'IA 2', color: '#3a7de0', isAI: true },
+    { name: 'IA 3', color: '#33b559', isAI: true },
+  ];
+  const g = new Game(configs, {}, seededRng(7));
+
+  // On simule une partie avancée
+  g.players[0].money = 940;
+  g.players[0].pos = 14;
+  g.players[1].inJail = true;
+  g.players[1].jailTurns = 2;
+  g.players[1].getOutCards = 1;
+  g.players[2].bankrupt = true;
+  g.players[2].money = 0;
+  g.tiles[1].owner = 0;
+  g.tiles[1].houses = 3;
+  g.tiles[3].owner = 0;
+  g.tiles[3].mortgaged = true;
+  g.current = 1;
+  g.turnCount = 12;
+  g.chance.draw();
+  g.chest.draw();
+  g.chest.draw();
+
+  // Aller-retour par JSON, comme le fera le localStorage
+  const snap = JSON.parse(JSON.stringify(g.serialize()));
+  const g2 = Game.fromSnapshot(snap, {});
+
+  assert.deepEqual(g2.players, g.players);
+  assert.deepEqual(g2.tiles, g.tiles);
+  assert.equal(g2.current, 1);
+  assert.equal(g2.turnCount, 12);
+  assert.equal(g2.over, false);
+  // les pioches reprennent exactement où elles en étaient
+  for (let i = 0; i < 15; i++) {
+    assert.equal(g2.chance.draw().text, g.chance.draw().text);
+    assert.equal(g2.chest.draw().text, g.chest.draw().text);
+  }
+  // le hook existe et vaut null par défaut
+  assert.equal(g2.onAutoSave, null);
+}
+
+console.log('✅ engine.js : serialize/fromSnapshot OK');

@@ -1,7 +1,7 @@
 import {
   TILES, GROUPS, GO_SALARY, JAIL_FINE, JAIL_INDEX, STARTING_MONEY,
 } from './data.js';
-import { CHANCE_CARDS, CHEST_CARDS, makeDeck } from './cards.js';
+import { CHANCE_CARDS, CHEST_CARDS, makeDeck, restoreDeck } from './cards.js';
 import { aiDecide, aiManage } from './ai.js';
 
 // Moteur de jeu. Toute l'interaction (3D + UI) passe par l'interface `view`,
@@ -28,6 +28,45 @@ export class Game {
     this.current = 0;
     this.over = false;
     this.turnCount = 0;
+    this.onAutoSave = null; // hook de sauvegarde automatique (branché par main.js)
+  }
+
+  // État pur de la partie, sérialisable en JSON. L'enveloppe (version, date)
+  // est ajoutée par storage.js.
+  serialize() {
+    return {
+      turnCount: this.turnCount,
+      current: this.current,
+      players: this.players.map((p) => ({
+        name: p.name,
+        color: p.color,
+        isAI: p.isAI,
+        money: p.money,
+        pos: p.pos,
+        inJail: p.inJail,
+        jailTurns: p.jailTurns,
+        getOutCards: p.getOutCards,
+        bankrupt: p.bankrupt,
+      })),
+      tiles: this.tiles.map((t) => ({
+        owner: t.owner,
+        houses: t.houses,
+        mortgaged: t.mortgaged,
+      })),
+      decks: { chance: this.chance.state(), chest: this.chest.state() },
+    };
+  }
+
+  static fromSnapshot(snap, view, rng = Math.random) {
+    const configs = snap.players.map(({ name, color, isAI }) => ({ name, color, isAI }));
+    const game = new Game(configs, view, rng);
+    snap.players.forEach((sp, i) => Object.assign(game.players[i], sp));
+    snap.tiles.forEach((st, i) => Object.assign(game.tiles[i], st));
+    game.chance = restoreDeck(CHANCE_CARDS, snap.decks.chance);
+    game.chest = restoreDeck(CHEST_CARDS, snap.decks.chest);
+    game.current = snap.current;
+    game.turnCount = snap.turnCount;
+    return game;
   }
 
   alivePlayers() {
@@ -38,6 +77,7 @@ export class Game {
     while (!this.over) {
       const p = this.players[this.current];
       if (!p.bankrupt) {
+        this.onAutoSave?.(this.serialize());
         this.turnCount++;
         await this.playTurn(p);
       }
