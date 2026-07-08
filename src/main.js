@@ -1,7 +1,8 @@
 import { Board3D } from './3d/scene.js';
 import { Game } from './game/engine.js';
-import { UI } from './ui/ui.js';
+import { UI, escapeHtml } from './ui/ui.js';
 import { PLAYER_COLORS } from './game/data.js';
+import { saveGame, loadGame, clearSave } from './game/storage.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -57,6 +58,28 @@ function renderPlayerRows() {
 renderCountButtons();
 renderPlayerRows();
 
+// S'il existe une partie sauvegardée, proposer de la reprendre
+const save = loadGame();
+if (save) {
+  const box = $('#resume-box');
+  const st = save.state;
+  const date = new Date(save.savedAt).toLocaleString('fr-FR', {
+    day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+  });
+  box.querySelector('.resume-meta').textContent = `Tour n°${st.turnCount + 1} — sauvegardée le ${date}`;
+  box.querySelector('.resume-players').innerHTML = st.players.map((p) => (
+    `<span class="resume-player${p.bankrupt ? ' out' : ''}">`
+    + `<span class="token-dot" style="background:${p.color}"></span>${escapeHtml(p.name)}</span>`
+  )).join('');
+  box.classList.remove('hidden');
+  $('#start-btn').textContent = '🎲 Nouvelle partie';
+  $('#resume-btn').onclick = () => {
+    $('#setup').classList.add('hidden');
+    $('#hud').classList.remove('hidden');
+    startGame(null, st);
+  };
+}
+
 $('#start-btn').onclick = () => {
   const configs = [...document.querySelectorAll('.player-row')].map((row, i) => ({
     name: row.querySelector('input').value.trim() || `Joueur ${i + 1}`,
@@ -72,7 +95,7 @@ $('#start-btn').onclick = () => {
 // Lancement de la partie : moteur ↔ scène 3D ↔ UI
 // ---------------------------------------------------------------------------
 
-async function startGame(configs) {
+async function startGame(configs, snapshot = null) {
   const scene = new Board3D($('#app'));
   const ui = new UI();
 
@@ -135,10 +158,11 @@ async function startGame(configs) {
 
     managePhase: (p) => ui.managePhase(p),
     aiThink: () => scene.delay(450),
-    announceWinner: (p) => ui.announceWinner(p),
+    announceWinner: (p) => { clearSave(); return ui.announceWinner(p); },
   };
 
-  const game = new Game(configs, view);
+  const game = snapshot ? Game.fromSnapshot(snapshot, view) : new Game(configs, view);
+  game.onAutoSave = saveGame;
   ui.bind(game);
 
   scene.onTileClick = (idx) => {
@@ -147,8 +171,25 @@ async function startGame(configs) {
   };
 
   scene.createTokens(game.players);
+  if (snapshot) {
+    // Replace pions, propriétaires, constructions et hypothèques
+    for (const p of game.players) {
+      if (p.bankrupt) scene.removeToken(p.id);
+      else scene.placeToken(p.id, p.pos, game.players.length);
+    }
+    game.tiles.forEach((t, i) => {
+      if (t.owner !== null) scene.setOwner(i, game.players[t.owner].color);
+      if (t.houses > 0) scene.setHouses(i, t.houses);
+      if (t.mortgaged) scene.setMortgaged(i, true);
+    });
+  }
   ui.updatePlayers();
-  ui.log('🎩 La partie commence ! Chaque joueur reçoit 1 500 €.');
+  if (snapshot) {
+    const cur = game.players[game.current];
+    ui.log(`📂 Partie reprise — au tour de ${cur.name} (tour n°${game.turnCount + 1}).`);
+  } else {
+    ui.log('🎩 La partie commence ! Chaque joueur reçoit 1 500 €.');
+  }
   await scene.introCamera();
   game.run();
 }
