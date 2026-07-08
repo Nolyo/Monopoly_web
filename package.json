@@ -1,0 +1,17 @@
+{
+  "name": "monopoly-3d",
+  "version": "1.0.0",
+  "description": "Monopoly 3D dans le navigateur — jouez contre des IA ou entre humains sur le même appareil",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}
