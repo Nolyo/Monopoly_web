@@ -271,11 +271,15 @@ export class UI {
           const t = g.tiles[i];
           const color = t.type === 'property' ? GROUP_COLORS[t.group] : t.type === 'station' ? '#2b2b2b' : '#6b6b3a';
           const houses = t.houses === 5 ? '🏨' : '🏠'.repeat(t.houses);
+          // Groupe complet mais construction bloquée → bouton désactivé + raison
+          const buildReason = t.type === 'property' && g.ownsFullGroup(p.id, t.group)
+            ? g.buildBlockReason(p.id, i) : null;
           html += `<div class="manage-row${t.mortgaged ? ' mortgaged' : ''}">
             <span class="swatch big" style="background:${color}"></span>
             <span class="manage-name">${escapeHtml(t.name)} ${houses}${t.mortgaged ? ' <i>(hyp.)</i>' : ''}</span>
             <span class="manage-actions" data-idx="${i}">
               ${g.canBuild(p.id, i) ? `<button data-act="build" class="mini-btn">🏠 +${formatMoney(t.houseCost)}</button>` : ''}
+              ${buildReason ? `<button class="mini-btn" disabled title="${buildReason}">🏠 +${formatMoney(t.houseCost)}</button><span class="manage-hint">${buildReason}</span>` : ''}
               ${g.canSellHouse(p.id, i) ? `<button data-act="sellHouse" class="mini-btn">Vendre 🏠 (+${formatMoney(t.houseCost / 2)})</button>` : ''}
               ${g.canMortgage(p.id, i) ? `<button data-act="mortgage" class="mini-btn">Hypothéquer (+${formatMoney(t.price / 2)})</button>` : ''}
               ${g.canUnmortgage(p.id, i) ? `<button data-act="unmortgage" class="mini-btn">Lever (−${formatMoney(g.unmortgageCost(i))})</button>` : ''}

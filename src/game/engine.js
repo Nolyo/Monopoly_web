@@ -453,6 +453,22 @@ export class Game {
     return this.players[playerId].money >= t.houseCost;
   }
 
+  // Explique pourquoi canBuild refuse : null si la construction est possible,
+  // ou si la case n'est pas une propriété du joueur (aucun bouton dans ce cas).
+  // Les vérifications doivent rester alignées sur celles de canBuild ci-dessus.
+  buildBlockReason(playerId, idx) {
+    const t = this.tiles[idx];
+    if (t.type !== 'property' || t.owner !== playerId) return null;
+    if (t.houses >= 5) return 'Hôtel déjà construit';
+    if (!this.ownsFullGroup(playerId, t.group)) return 'Groupe incomplet';
+    const group = GROUPS[t.group].map((i) => this.tiles[i]);
+    if (group.some((g) => g.mortgaged)) return 'Hypothèque dans le groupe';
+    const minHouses = Math.min(...group.map((g) => g.houses));
+    if (t.houses > minHouses) return 'Construction uniforme requise';
+    if (this.players[playerId].money < t.houseCost) return 'Fonds insuffisants';
+    return null;
+  }
+
   build(playerId, idx) {
     if (!this.canBuild(playerId, idx)) return false;
     const t = this.tiles[idx];
