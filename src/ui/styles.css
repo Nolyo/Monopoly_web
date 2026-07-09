@@ -151,6 +151,20 @@ html, body {
 .action-btn.danger { background: #7a1d1d; }
 .action-btn.big { font-size: 18px; padding: 15px 34px; width: 100%; }
 
+/* pastille de raccourci clavier dans le bouton principal */
+.key-hint kbd {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 500;
+  vertical-align: 1px;
+  margin-left: 2px;
+}
+
 /* ------------------------------------------------- modales */
 #modal-root { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
 .modal-overlay {

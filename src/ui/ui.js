@@ -13,6 +13,20 @@ export class UI {
     this.turnBanner = $('#turn-banner');
     this.game = null;
     this.speed = 1;
+
+    // Raccourci clavier : Espace déclenche l'action principale (lancer les dés, fin du tour)
+    document.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' || e.repeat) return;
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      if (this.modalRoot.childElementCount > 0) return; // les modales ont leurs propres boutons
+      const setup = document.querySelector('#setup');
+      if (setup && !setup.classList.contains('hidden')) return; // partie non commencée
+      const primary = this.actionsEl.querySelector('.action-btn.primary');
+      if (!primary || primary.disabled) return;
+      e.preventDefault(); // évite le défilement de la page
+      primary.click();
+    });
   }
 
   bind(game) {
@@ -79,8 +93,12 @@ export class UI {
       const btn = document.createElement('button');
       btn.className = `action-btn ${b.cls || ''}`;
       btn.innerHTML = b.label;
+      if (b.cls === 'primary' && !b.disabled) {
+        btn.innerHTML += ' <span class="key-hint"><kbd>Espace</kbd></span>';
+      }
       btn.disabled = !!b.disabled;
-      btn.onclick = b.onClick;
+      // blur après clic : sinon Espace réactiverait le bouton resté focalisé
+      btn.onclick = () => { btn.blur(); b.onClick(); };
       this.actionsEl.appendChild(btn);
     }
   }
