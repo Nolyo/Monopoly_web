@@ -28,6 +28,9 @@ export function isMuted() {
   return muted;
 }
 
+// Un seul cycle de vie par chargement de page : startGame() n'est appelée
+// qu'une fois (l'écran de setup se masque, et la fin de partie recharge la
+// page) — l'AudioContext créé ici n'est donc jamais fermé ni dupliqué.
 export function initSounds() {
   try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch { muted = false; }
   try {
@@ -51,7 +54,7 @@ export function initSounds() {
 export function playSound(name) {
   try {
     if (!ctx || !buffers[name] || muted) return;
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const src = ctx.createBufferSource();
     src.buffer = buffers[name];
     const gain = ctx.createGain();

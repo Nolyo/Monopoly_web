@@ -29,7 +29,11 @@ import assert from 'node:assert/strict';
   // Sans init : playSound est un no-op silencieux
   playSound('dice');
 
-  // Node n'a pas d'AudioContext : initSounds doit s'en accommoder sans lever
+  // Node n'a pas d'AudioContext : initSounds doit s'en accommoder sans lever.
+  // Sans clé stockée, le son est actif par défaut.
+  initSounds();
+  assert.equal(isMuted(), false, 'clé absente → non muet par défaut');
+
   store.set('monopoly3d.muted', '1');
   initSounds();
   assert.equal(isMuted(), true, 'état mute lu depuis localStorage à init');
