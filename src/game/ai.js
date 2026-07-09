@@ -45,6 +45,62 @@ export function aiDecide(game, p, type, data) {
   }
 }
 
+// Évalue une proposition d'échange du point de vue de l'IA `aiPlayer`.
+// Fonction pure (aucune mutation) : retourne true si l'IA accepte.
+// Heuristique transparente :
+//   - chaque case vaut son prix d'achat ; hypothéquée → moitié du prix,
+//     moins les 10 % de frais de levée d'hypothèque ;
+//   - +50 % si une case reçue complète un groupe de couleur pour l'IA ;
+//   - +30 % sur le « coût » d'une case cédée si cela casse un monopole de l'IA
+//     ou offre un groupe complet à l'adversaire (céder coûte alors plus cher) ;
+//   - l'IA exige une marge de 10 % et refuse de descendre sous 100 € de liquidités.
+export function aiEvaluateTrade(game, aiPlayer, offer) {
+  // Normalise l'offre du point de vue de l'IA, quel que soit son côté
+  const aiIsTo = offer.toId === aiPlayer.id;
+  const receivedTiles = (aiIsTo ? offer.giveTiles : offer.takeTiles) ?? [];
+  const givenTiles = (aiIsTo ? offer.takeTiles : offer.giveTiles) ?? [];
+  const receivedMoney = (aiIsTo ? offer.giveMoney : offer.takeMoney) ?? 0;
+  const givenMoney = (aiIsTo ? offer.takeMoney : offer.giveMoney) ?? 0;
+  const otherId = aiIsTo ? offer.fromId : offer.toId;
+
+  // Jamais descendre sous 100 € de liquidités
+  if (aiPlayer.money + receivedMoney - givenMoney < 100) return false;
+
+  const baseValue = (t) => (t.mortgaged
+    ? t.price / 2 - Math.round((t.price / 2) * 0.1)
+    : t.price);
+
+  let received = receivedMoney;
+  for (const i of receivedTiles) {
+    const t = game.tiles[i];
+    let v = baseValue(t);
+    // Bonus : la case complète un groupe pour l'IA (loyers doublés, constructions)
+    if (t.type === 'property'
+      && GROUPS[t.group].every((j) => j === i || receivedTiles.includes(j)
+        || game.tiles[j].owner === aiPlayer.id)) {
+      v *= 1.5;
+    }
+    received += v;
+  }
+
+  let given = givenMoney;
+  for (const i of givenTiles) {
+    const t = game.tiles[i];
+    let v = baseValue(t);
+    if (t.type === 'property') {
+      const breaksOwnGroup = game.ownsFullGroup(aiPlayer.id, t.group);
+      const completesOpponent = GROUPS[t.group].every((j) => j === i
+        || givenTiles.includes(j) || game.tiles[j].owner === otherId);
+      // Malus : céder cette case coûte 30 % plus cher que sa valeur nominale
+      if (breaksOwnGroup || completesOpponent) v *= 1.3;
+    }
+    given += v;
+  }
+
+  // L'IA n'accepte qu'avec une marge de 10 % en sa faveur
+  return received >= given * 1.1;
+}
+
 export function aiManage(game, p, { liquidateFor = 0 }) {
   if (liquidateFor > 0) {
     liquidate(game, p, liquidateFor);

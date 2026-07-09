@@ -1,5 +1,5 @@
 import {
-  TILES, GROUPS, GO_SALARY, JAIL_FINE, JAIL_INDEX, STARTING_MONEY,
+  TILES, GROUPS, GO_SALARY, JAIL_FINE, JAIL_INDEX, STARTING_MONEY, formatMoney,
 } from './data.js';
 import { CHANCE_CARDS, CHEST_CARDS, makeDeck, restoreDeck } from './cards.js';
 import { aiDecide, aiManage } from './ai.js';
@@ -539,6 +539,84 @@ export class Game {
     t.mortgaged = false;
     this.view.log(`${p.name} lève l'hypothèque de ${t.name}.`);
     this.view.setMortgaged(idx, false);
+    this.view.updatePlayers();
+    return true;
+  }
+
+  // ----- Échanges entre joueurs -----
+  // offer = { fromId, toId, giveTiles: [idx], giveMoney, takeTiles: [idx], takeMoney }
+  // `give*` = ce que fromId donne, `take*` = ce que fromId reçoit de toId.
+
+  // Explique pourquoi l'échange est impossible : null si l'offre est valide.
+  // Les vérifications doivent rester alignées sur canTrade/executeTrade.
+  tradeBlockReason(offer) {
+    const {
+      fromId, toId, giveTiles = [], takeTiles = [], giveMoney = 0, takeMoney = 0,
+    } = offer;
+    const from = this.players[fromId];
+    const to = this.players[toId];
+    if (!from || !to) return 'Joueur introuvable';
+    if (fromId === toId) return 'Impossible d\'échanger avec soi-même';
+    if (from.bankrupt || to.bankrupt) return 'Joueur en faillite';
+    if (!Number.isInteger(giveMoney) || !Number.isInteger(takeMoney)
+      || giveMoney < 0 || takeMoney < 0) return 'Montant invalide';
+    if (giveTiles.length === 0 && takeTiles.length === 0
+      && giveMoney === 0 && takeMoney === 0) return 'Offre vide';
+    const OWNABLE = ['property', 'station', 'utility'];
+    for (const [tiles, owner] of [[giveTiles, from], [takeTiles, to]]) {
+      for (const i of tiles) {
+        const t = this.tiles[i];
+        if (!t || !OWNABLE.includes(t.type)) return 'Case non échangeable';
+        if (t.owner !== owner.id) return `${t.name} n'appartient pas à ${owner.name}`;
+        // Règle classique : on vend les constructions avant d'échanger le groupe
+        if (t.houses > 0
+          || (t.type === 'property' && GROUPS[t.group].some((j) => this.tiles[j].houses > 0))) {
+          return `Vendez d'abord les constructions du groupe de ${t.name}`;
+        }
+      }
+    }
+    if (from.money < giveMoney) return `Fonds insuffisants pour ${from.name}`;
+    if (to.money < takeMoney) return `Fonds insuffisants pour ${to.name}`;
+    return null;
+  }
+
+  canTrade(offer) {
+    return this.tradeBlockReason(offer) === null;
+  }
+
+  executeTrade(offer) {
+    if (!this.canTrade(offer)) return false;
+    const {
+      fromId, toId, giveTiles = [], takeTiles = [], giveMoney = 0, takeMoney = 0,
+    } = offer;
+    const from = this.players[fromId];
+    const to = this.players[toId];
+    from.money += takeMoney - giveMoney;
+    to.money += giveMoney - takeMoney;
+    let mortgagedMoved = false;
+    for (const i of giveTiles) {
+      this.tiles[i].owner = toId;
+      if (this.tiles[i].mortgaged) mortgagedMoved = true;
+      this.view.setOwner(i, to);
+    }
+    for (const i of takeTiles) {
+      this.tiles[i].owner = fromId;
+      if (this.tiles[i].mortgaged) mortgagedMoved = true;
+      this.view.setOwner(i, from);
+    }
+    if (giveMoney > 0 || takeMoney > 0) this.view.sfx?.('cash');
+    const side = (tiles, money) => {
+      const parts = tiles.map((i) => this.tiles[i].name);
+      if (money > 0) parts.push(formatMoney(money));
+      return parts.length > 0 ? parts.join(' + ') : 'rien';
+    };
+    this.view.log(
+      `🔁 ${from.name} échange ${side(giveTiles, giveMoney)} contre ${side(takeTiles, takeMoney)} avec ${to.name}.`,
+      'good',
+    );
+    if (mortgagedMoved) {
+      this.view.log('Les hypothèques sont transférées avec les propriétés échangées.');
+    }
     this.view.updatePlayers();
     return true;
   }

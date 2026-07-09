@@ -1,6 +1,7 @@
 import {
   GROUPS, GROUP_COLORS, GROUP_NAMES, formatMoney,
 } from '../game/data.js';
+import { aiEvaluateTrade } from '../game/ai.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -120,6 +121,7 @@ export class UI {
           onClick: () => { this.clearActions(); resolve(); },
         },
         { label: '🏘️ Gérer', onClick: () => this.openManageModal(p) },
+        { label: '🔁 Échanger', onClick: () => this.openTradeModal(p) },
       ]);
     });
   }
@@ -128,6 +130,7 @@ export class UI {
     return new Promise((resolve) => {
       this.setActions([
         { label: '🏘️ Gérer mes propriétés', onClick: () => this.openManageModal(p) },
+        { label: '🔁 Échanger', onClick: () => this.openTradeModal(p) },
         {
           label: '✅ Fin du tour',
           cls: 'primary',
@@ -335,6 +338,201 @@ export class UI {
       };
       render();
     });
+  }
+
+  // ------------------------------------------------- échanges
+  // Modale à état (comme openManageModal) : étape 1 = choix du partenaire,
+  // étape 2 = composition de l'offre (deux colonnes + argent), puis proposition.
+  openTradeModal(p) {
+    const g = this.game;
+    const partners = g.players.filter((q) => q.id !== p.id && !q.bankrupt);
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const box = document.createElement('div');
+    box.className = 'modal-box manage-box trade-box';
+    overlay.appendChild(box);
+    this.modalRoot.appendChild(overlay);
+
+    const state = { partnerId: null, give: new Set(), take: new Set(), giveMoney: 0, takeMoney: 0 };
+    const close = () => overlay.remove();
+    const tileColor = (t) => (t.type === 'property' ? GROUP_COLORS[t.group]
+      : t.type === 'station' ? '#2b2b2b' : '#6b6b3a');
+
+    const offer = () => ({
+      fromId: p.id,
+      toId: state.partnerId,
+      giveTiles: [...state.give],
+      giveMoney: state.giveMoney,
+      takeTiles: [...state.take],
+      takeMoney: state.takeMoney,
+    });
+
+    const summaryText = () => {
+      const partner = g.players[state.partnerId];
+      const side = (sel, money) => {
+        const parts = [...sel].map((i) => g.tiles[i].name);
+        if (money > 0) parts.push(formatMoney(money));
+        return parts.length > 0 ? parts.join(' + ') : 'rien';
+      };
+      return `${p.name} donne ${side(state.give, state.giveMoney)} et reçoit `
+        + `${side(state.take, state.takeMoney)} de ${partner.name}.`;
+    };
+
+    const addButton = (bar, label, cls, onClick) => {
+      const btn = document.createElement('button');
+      btn.className = `action-btn ${cls}`;
+      btn.textContent = label;
+      btn.onclick = onClick;
+      bar.appendChild(btn);
+      return btn;
+    };
+
+    // --- Étape 1 : choix du partenaire ---
+    const renderPartnerChoice = () => {
+      let html = `<h2>🔁 Échanger — ${escapeHtml(p.name)}</h2>`;
+      if (partners.length === 0) {
+        html += '<p>Aucun partenaire disponible.</p>';
+      } else {
+        html += '<p>Avec qui souhaitez-vous échanger ?</p><div class="trade-partners">'
+          + partners.map((q) => `
+            <button class="trade-partner-btn" data-id="${q.id}">
+              <span class="token-dot" style="background:${q.color}"></span>
+              <span>${escapeHtml(q.name)}${q.isAI ? ' 🤖' : ''}</span>
+              <span class="trade-partner-money">${formatMoney(q.money)}</span>
+            </button>`).join('')
+          + '</div>';
+      }
+      box.innerHTML = html;
+      const bar = document.createElement('div');
+      bar.className = 'modal-buttons';
+      addButton(bar, 'Annuler', '', close);
+      box.appendChild(bar);
+      box.querySelectorAll('.trade-partner-btn').forEach((btn) => {
+        btn.onclick = () => { state.partnerId = Number(btn.dataset.id); renderTrade(); };
+      });
+    };
+
+    // --- Étape 2 : composition de l'offre ---
+    const colHtml = (player, side) => {
+      const sel = side === 'give' ? state.give : state.take;
+      const owned = g.ownedTiles(player.id);
+      let rows = owned.map((i) => {
+        const t = g.tiles[i];
+        // Règle classique : le groupe doit être libre de constructions
+        const blocked = t.houses > 0
+          || (t.type === 'property' && GROUPS[t.group].some((j) => g.tiles[j].houses > 0));
+        return `<div class="trade-row${sel.has(i) ? ' selected' : ''}${blocked ? ' blocked' : ''}"
+            data-idx="${i}" data-side="${side}"${blocked ? ' title="Vendez les constructions d\'abord"' : ''}>
+          <span class="swatch big" style="background:${tileColor(t)}"></span>
+          <span class="trade-name">${escapeHtml(t.name)}${t.mortgaged ? ' <i>(hyp.)</i>' : ''}</span>
+          <span class="trade-price">${formatMoney(t.price)}</span>
+        </div>`;
+      }).join('');
+      if (owned.length === 0) rows = '<div class="trade-empty">Aucune propriété</div>';
+      return `<div class="trade-col">
+        <div class="trade-col-head">
+          <span class="token-dot" style="background:${player.color}"></span>
+          ${escapeHtml(player.name)} donne
+        </div>
+        <div class="trade-list">${rows}</div>
+        <label class="trade-money-label">Argent
+          <input type="number" class="trade-money" data-side="${side}"
+            min="0" step="10" max="${player.money}"
+            value="${side === 'give' ? state.giveMoney : state.takeMoney}"> €
+        </label>
+      </div>`;
+    };
+
+    const renderTrade = () => {
+      const partner = g.players[state.partnerId];
+      box.innerHTML = `<h2>🔁 Échange avec ${escapeHtml(partner.name)}</h2>
+        <div class="trade-cols">${colHtml(p, 'give')}${colHtml(partner, 'take')}</div>
+        <div class="trade-summary"></div>
+        <div class="trade-reason"></div>`;
+      const bar = document.createElement('div');
+      bar.className = 'modal-buttons';
+      if (partners.length > 1) {
+        addButton(bar, '↩️ Partenaire', '', () => {
+          state.partnerId = null;
+          state.give.clear();
+          state.take.clear();
+          state.giveMoney = 0;
+          state.takeMoney = 0;
+          renderPartnerChoice();
+        });
+      }
+      addButton(bar, 'Annuler', '', close);
+      const proposeBtn = addButton(bar, 'Proposer', 'primary', () => propose());
+      box.appendChild(bar);
+
+      const summaryEl = box.querySelector('.trade-summary');
+      const reasonEl = box.querySelector('.trade-reason');
+      const update = () => {
+        const reason = g.tradeBlockReason(offer());
+        summaryEl.textContent = summaryText();
+        reasonEl.textContent = reason ?? '';
+        proposeBtn.disabled = reason !== null;
+      };
+
+      box.querySelectorAll('.trade-row:not(.blocked)').forEach((row) => {
+        row.onclick = () => {
+          const idx = Number(row.dataset.idx);
+          const sel = row.dataset.side === 'give' ? state.give : state.take;
+          if (sel.has(idx)) sel.delete(idx);
+          else sel.add(idx);
+          row.classList.toggle('selected');
+          update();
+        };
+      });
+      box.querySelectorAll('.trade-money').forEach((input) => {
+        input.oninput = () => {
+          const v = Math.max(0, Math.floor(Number(input.value) || 0));
+          if (input.dataset.side === 'give') state.giveMoney = v;
+          else state.takeMoney = v;
+          update();
+        };
+      });
+      update();
+    };
+
+    const propose = async () => {
+      const o = offer();
+      if (g.tradeBlockReason(o) !== null) return;
+      const partner = g.players[state.partnerId];
+      if (partner.isAI) {
+        if (aiEvaluateTrade(g, partner, o)) {
+          close();
+          g.executeTrade(o);
+          this.toast(`🤝 ${partner.name} accepte l'échange !`);
+        } else {
+          this.toast(`❌ ${partner.name} refuse l'échange.`);
+        }
+        return;
+      }
+      // Partenaire humain (même appareil) : on lui adresse la confirmation
+      const res = await this.showModal(
+        `<h2>🤝 Proposition d'échange</h2>
+         <p><b>${escapeHtml(partner.name)}</b>, acceptes-tu cet échange ?</p>
+         <div class="trade-summary">${escapeHtml(summaryText())}</div>`,
+        [
+          { label: 'Refuser', value: false },
+          { label: 'Accepter', value: true, cls: 'primary' },
+        ],
+      );
+      if (res === true) {
+        close();
+        g.executeTrade(o);
+      }
+      // Refus : la modale d'échange reste ouverte, sélections conservées
+    };
+
+    // Un seul adversaire possible : on saute l'étape de sélection
+    if (partners.length === 1) {
+      state.partnerId = partners[0].id;
+      renderTrade();
+    } else {
+      renderPartnerChoice();
+    }
   }
 
   async promptRaiseMoney(p, amount) {
