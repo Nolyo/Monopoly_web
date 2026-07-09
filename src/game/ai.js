@@ -34,8 +34,9 @@ export function aiDecide(game, p, type, data) {
     }
     case 'auction': {
       // Mêmes signaux que l'achat direct : l'IA se fixe un plafond privé
-      // selon la valeur stratégique de la case, puis surenchérit au minimum
-      // (pas de « sniping » : +10 € à chaque tour) tant que le plafond tient.
+      // selon la valeur stratégique de la case. Loin de son plafond, elle fait
+      // un saut de mise (5 × la relance minimale) pour abréger l'enchère, puis
+      // surenchérit au minimum en approchant du plafond (déterministe).
       const { tile, currentBid, minRaise } = data;
       let cap;
       if (completesGroup(game, p, tile)) cap = Math.round(tile.price * 1.4);
@@ -44,7 +45,8 @@ export function aiDecide(game, p, type, data) {
       // Réserve de liquidités : gares et compagnies méritent moins de sacrifice
       const floor = (tile.type === 'station' || tile.type === 'utility') ? 100 : 150;
       cap = Math.min(cap, p.money - floor);
-      const next = currentBid + minRaise;
+      const raise = cap - currentBid > minRaise * 5 ? minRaise * 5 : minRaise;
+      const next = currentBid + raise;
       return next <= cap ? next : null; // null = passe (définitif)
     }
     case 'jail': {
@@ -63,12 +65,14 @@ export function aiDecide(game, p, type, data) {
 // Évalue une proposition d'échange du point de vue de l'IA `aiPlayer`.
 // Fonction pure (aucune mutation) : retourne true si l'IA accepte.
 // Heuristique transparente :
-//   - chaque case vaut son prix d'achat ; hypothéquée → moitié du prix,
-//     moins les 10 % de frais de levée d'hypothèque ;
-//   - +50 % si une case reçue complète un groupe de couleur pour l'IA ;
+//   - chaque case vaut son prix d'achat ; hypothéquée → prix moins le coût
+//     de levée d'hypothèque (source unique : engine.unmortgageCost) ;
+//   - +50 % si une case reçue complète un groupe de couleur pour l'IA
+//     (au vu de la répartition APRÈS échange : les cases cédées ne comptent plus) ;
 //   - +30 % sur le « coût » d'une case cédée si cela casse un monopole de l'IA
 //     ou offre un groupe complet à l'adversaire (céder coûte alors plus cher) ;
-//   - l'IA exige une marge de 10 % et refuse de descendre sous 100 € de liquidités.
+//   - l'IA exige une marge de 10 % et refuse tout échange qui ferait tomber
+//     ses liquidités sous 100 €.
 export function aiEvaluateTrade(game, aiPlayer, offer) {
   // Normalise l'offre du point de vue de l'IA, quel que soit son côté
   const aiIsTo = offer.toId === aiPlayer.id;
@@ -78,21 +82,25 @@ export function aiEvaluateTrade(game, aiPlayer, offer) {
   const givenMoney = (aiIsTo ? offer.takeMoney : offer.giveMoney) ?? 0;
   const otherId = aiIsTo ? offer.fromId : offer.toId;
 
-  // Jamais descendre sous 100 € de liquidités
-  if (aiPlayer.money + receivedMoney - givenMoney < 100) return false;
+  // Jamais accepter un échange qui APPAUVRIT l'IA sous 100 € de liquidités
+  // (un cadeau ou un troc sans argent reste acceptable même en dessous)
+  const netCash = receivedMoney - givenMoney;
+  if (netCash < 0 && aiPlayer.money + netCash < 100) return false;
 
-  const baseValue = (t) => (t.mortgaged
-    ? t.price / 2 - Math.round((t.price / 2) * 0.1)
-    : t.price);
+  const baseValue = (i) => {
+    const t = game.tiles[i];
+    return t.mortgaged ? t.price - game.unmortgageCost(i) : t.price;
+  };
 
   let received = receivedMoney;
   for (const i of receivedTiles) {
     const t = game.tiles[i];
-    let v = baseValue(t);
+    let v = baseValue(i);
     // Bonus : la case complète un groupe pour l'IA (loyers doublés, constructions)
+    // — au vu de la répartition après échange : les cases cédées ne comptent plus
     if (t.type === 'property'
       && GROUPS[t.group].every((j) => j === i || receivedTiles.includes(j)
-        || game.tiles[j].owner === aiPlayer.id)) {
+        || (game.tiles[j].owner === aiPlayer.id && !givenTiles.includes(j)))) {
       v *= 1.5;
     }
     received += v;
@@ -101,11 +109,13 @@ export function aiEvaluateTrade(game, aiPlayer, offer) {
   let given = givenMoney;
   for (const i of givenTiles) {
     const t = game.tiles[i];
-    let v = baseValue(t);
+    let v = baseValue(i);
     if (t.type === 'property') {
       const breaksOwnGroup = game.ownsFullGroup(aiPlayer.id, t.group);
+      // Après échange : les cases que l'IA reçoit ne comptent plus pour l'adversaire
       const completesOpponent = GROUPS[t.group].every((j) => j === i
-        || givenTiles.includes(j) || game.tiles[j].owner === otherId);
+        || givenTiles.includes(j)
+        || (game.tiles[j].owner === otherId && !receivedTiles.includes(j)));
       // Malus : céder cette case coûte 30 % plus cher que sa valeur nominale
       if (breaksOwnGroup || completesOpponent) v *= 1.3;
     }

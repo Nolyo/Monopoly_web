@@ -179,6 +179,40 @@ console.log('✅ ai.js : accepte la case qui complète son groupe, garde 100 €
 
 console.log('✅ ai.js : refuse de brader une case de son monopole');
 
+// --- 7 bis. IA : évalue le groupe APRÈS échange, pas avant ------------------
+{
+  const { view } = makeView();
+  const g = makeGame(view);
+  // Bob (IA) possède 2 des 3 oranges ; Alice a la troisième.
+  // Alice propose un troc dans le MÊME groupe : elle donne sa case (180 €)
+  // contre une case de Bob (180 €) + 50 € — après échange Bob a toujours 2/3,
+  // aucun groupe complété : le bonus ×1,5 ne doit PAS s'appliquer → refus.
+  g.tiles[ORANGE[1]].owner = 1;
+  g.tiles[ORANGE[2]].owner = 1;
+  g.tiles[ORANGE[0]].owner = 0;
+  const offer = {
+    fromId: 0, toId: 1, giveTiles: [ORANGE[0]], giveMoney: 0, takeTiles: [ORANGE[1]], takeMoney: 50,
+  };
+  // Reçu : 180 (sans bonus) < donné : 180 + 50 = 230 × 1,1 → refuse
+  assert.equal(aiEvaluateTrade(g, g.players[1], offer), false);
+}
+
+console.log('✅ ai.js : pas de bonus « groupe complété » avec une case cédée dans l\'échange');
+
+// --- 7 ter. IA : accepte un cadeau même sous 100 € de liquidités ------------
+{
+  const { view } = makeView();
+  const g = makeGame(view);
+  // Bob (IA) n'a plus que 80 € ; Alice lui offre une gare sans contrepartie.
+  // L'échange n'appauvrit pas Bob : le plancher de 100 € ne s'applique pas.
+  g.players[1].money = 80;
+  g.tiles[GARE].owner = 0;
+  const offer = { fromId: 0, toId: 1, giveTiles: [GARE], giveMoney: 0, takeTiles: [], takeMoney: 0 };
+  assert.equal(aiEvaluateTrade(g, g.players[1], offer), true);
+}
+
+console.log('✅ ai.js : cadeau accepté même avec moins de 100 € en caisse');
+
 // --- 8. Invariant : tradeBlockReason null ⇔ canTrade true ------------------
 {
   const { view } = makeView();

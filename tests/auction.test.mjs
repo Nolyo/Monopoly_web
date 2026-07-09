@@ -49,11 +49,11 @@ function makeGame(view, configs) {
   g.players[1].money = 150; // Bob : plafond nul (réserve de liquidités) → passe
   await g.runAuction(BROWN[1]);
   assert.equal(g.tiles[BROWN[1]].owner, 0);
-  assert.equal(g.players[0].money, 1500 - 10); // première mise minimale : 10 €
+  assert.equal(g.players[0].money, 1500 - 50); // première mise : saut de 5 × 10 €
   assert.equal(g.players[1].money, 150); // le perdant ne paie rien
   assert.deepEqual(calls.setOwner, [[BROWN[1], 0]]);
   assert.ok(calls.logs.some((m) => m.includes('mis aux enchères')));
-  assert.ok(calls.logs.some((m) => m.includes('Alice remporte') && m.includes('10')));
+  assert.ok(calls.logs.some((m) => m.includes('Alice remporte') && m.includes('50')));
 }
 
 console.log('✅ engine.js : le gagnant de l\'enchère paie sa mise et devient propriétaire');
@@ -149,9 +149,10 @@ console.log('✅ engine.js : passer est définitif — le joueur sort de l\'ench
   assert.equal(g.players[0].money, 1500 - 350); // en dessous du prix (400 €)
   assert.equal(g.players[1].money, 1500);
   // La première demande part de zéro, les suivantes reflètent la mise de Bob
+  // (loin de son plafond, l'IA saute de 5 × 10 € : 100 → 150)
   assert.equal(prompts[0].currentBid, 0);
   assert.equal(prompts[0].minRaise, 10);
-  assert.equal(prompts[1].currentBid, 110);
+  assert.equal(prompts[1].currentBid, 150);
   assert.equal(prompts[1].highestBidder, 'Bob');
 }
 
@@ -186,8 +187,8 @@ console.log('✅ engine.js : un humain enchérit librement (mises via promptHuma
   g2.players[0].money = 50; // moins que les 60 € de la case
   await g2.resolveOwnable(g2.players[0], BROWN[1], 7);
   assert.ok(calls2.logs.some((m) => m.includes("n'a pas les moyens")));
-  assert.equal(g2.tiles[BROWN[1]].owner, 1); // Bob rafle la case à 10 €
-  assert.equal(g2.players[1].money, 1500 - 10);
+  assert.equal(g2.tiles[BROWN[1]].owner, 1); // Bob rafle la case à 50 € (saut de mise)
+  assert.equal(g2.players[1].money, 1500 - 50);
 
   // c) Achat accepté → AUCUNE enchère
   const { view: view3, calls: calls3 } = makeView({

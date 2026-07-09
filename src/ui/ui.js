@@ -1,9 +1,13 @@
 import {
-  GROUPS, GROUP_COLORS, GROUP_NAMES, formatMoney,
+  GROUP_COLORS, GROUP_NAMES, formatMoney,
 } from '../game/data.js';
 import { aiEvaluateTrade } from '../game/ai.js';
 
 const $ = (sel) => document.querySelector(sel);
+
+// Couleur de pastille d'une case possédable (gestion et échanges)
+const tileColor = (t) => (t.type === 'property' ? GROUP_COLORS[t.group]
+  : t.type === 'station' ? '#2b2b2b' : '#6b6b3a');
 
 export class UI {
   constructor() {
@@ -99,7 +103,7 @@ export class UI {
       }
       btn.disabled = !!b.disabled;
       // blur après clic : sinon Espace réactiverait le bouton resté focalisé
-      btn.onclick = () => { btn.blur(); b.onClick(); };
+      btn.onclick = () => { btn.blur(); b.onClick?.(); };
       this.actionsEl.appendChild(btn);
     }
   }
@@ -240,9 +244,9 @@ export class UI {
     return res === true;
   }
 
-  // Modale d'enchère : boutons de relance rapide (+10/+50/+100) qui misent
-  // immédiatement, ou mise libre via le champ numérique. Résout avec le
-  // montant misé (entier) ou null si le joueur passe (définitif).
+  // Modale d'enchère : boutons de relance rapide (×1/×5/×10 la relance
+  // minimale) qui misent immédiatement, ou mise libre via le champ numérique.
+  // Résout avec le montant misé (entier) ou null si le joueur passe (définitif).
   promptAuction(p, { idx, currentBid, minRaise, highestBidder }) {
     return new Promise((resolve) => {
       const t = this.game.tiles[idx];
@@ -254,7 +258,7 @@ export class UI {
       const statusLine = highestBidder !== null
         ? `Mise actuelle : <b>${formatMoney(currentBid)}</b> par <b>${escapeHtml(highestBidder)}</b>`
         : 'Aucune mise pour le moment.';
-      const quick = [10, 50, 100].map((n) => {
+      const quick = [minRaise, minRaise * 5, minRaise * 10].map((n) => {
         const bid = currentBid + n;
         return `<button class="mini-btn auction-raise" data-bid="${bid}"${bid > p.money ? ' disabled' : ''}>+${n} € → ${formatMoney(bid)}</button>`;
       }).join('');
@@ -276,7 +280,7 @@ export class UI {
       const done = (value) => { overlay.remove(); resolve(value); };
       const passBtn = document.createElement('button');
       passBtn.className = 'action-btn';
-      passBtn.textContent = 'Passer';
+      passBtn.textContent = 'Passer (définitif)';
       passBtn.onclick = () => done(null);
       bar.appendChild(passBtn);
       const bidBtn = document.createElement('button');
@@ -355,17 +359,18 @@ export class UI {
         html += '<div class="manage-list">';
         for (const i of owned) {
           const t = g.tiles[i];
-          const color = t.type === 'property' ? GROUP_COLORS[t.group] : t.type === 'station' ? '#2b2b2b' : '#6b6b3a';
           const houses = t.houses === 5 ? '🏨' : '🏠'.repeat(t.houses);
-          // Groupe complet mais construction bloquée → bouton désactivé + raison
-          const buildReason = t.type === 'property' && g.ownsFullGroup(p.id, t.group)
-            ? g.buildBlockReason(p.id, i) : null;
+          // Bouton de construction dérivé d'une seule source (buildBlockReason) :
+          // raison nulle → bouton actif ; groupe incomplet (ou case non
+          // constructible) → pas de bouton ; autre blocage → bouton grisé + raison.
+          const buildReason = g.buildBlockReason(p.id, i);
+          const buildBtn = (t.type !== 'property' || buildReason === 'Groupe incomplet') ? ''
+            : `<button data-act="build" class="mini-btn"${buildReason ? ` disabled title="${buildReason}"` : ''}>🏠 +${formatMoney(t.houseCost)}</button>${buildReason ? `<span class="manage-hint">${buildReason}</span>` : ''}`;
           html += `<div class="manage-row${t.mortgaged ? ' mortgaged' : ''}">
-            <span class="swatch big" style="background:${color}"></span>
+            <span class="swatch big" style="background:${tileColor(t)}"></span>
             <span class="manage-name">${escapeHtml(t.name)} ${houses}${t.mortgaged ? ' <i>(hyp.)</i>' : ''}</span>
             <span class="manage-actions" data-idx="${i}">
-              ${g.canBuild(p.id, i) ? `<button data-act="build" class="mini-btn">🏠 +${formatMoney(t.houseCost)}</button>` : ''}
-              ${buildReason ? `<button class="mini-btn" disabled title="${buildReason}">🏠 +${formatMoney(t.houseCost)}</button><span class="manage-hint">${buildReason}</span>` : ''}
+              ${buildBtn}
               ${g.canSellHouse(p.id, i) ? `<button data-act="sellHouse" class="mini-btn">Vendre 🏠 (+${formatMoney(t.houseCost / 2)})</button>` : ''}
               ${g.canMortgage(p.id, i) ? `<button data-act="mortgage" class="mini-btn">Hypothéquer (+${formatMoney(t.price / 2)})</button>` : ''}
               ${g.canUnmortgage(p.id, i) ? `<button data-act="unmortgage" class="mini-btn">Lever (−${formatMoney(g.unmortgageCost(i))})</button>` : ''}
@@ -420,8 +425,6 @@ export class UI {
 
     const state = { partnerId: null, give: new Set(), take: new Set(), giveMoney: 0, takeMoney: 0 };
     const close = () => overlay.remove();
-    const tileColor = (t) => (t.type === 'property' ? GROUP_COLORS[t.group]
-      : t.type === 'station' ? '#2b2b2b' : '#6b6b3a');
 
     const offer = () => ({
       fromId: p.id,
@@ -434,13 +437,8 @@ export class UI {
 
     const summaryText = () => {
       const partner = g.players[state.partnerId];
-      const side = (sel, money) => {
-        const parts = [...sel].map((i) => g.tiles[i].name);
-        if (money > 0) parts.push(formatMoney(money));
-        return parts.length > 0 ? parts.join(' + ') : 'rien';
-      };
-      return `${p.name} donne ${side(state.give, state.giveMoney)} et reçoit `
-        + `${side(state.take, state.takeMoney)} de ${partner.name}.`;
+      return `${p.name} donne ${g.formatTradeSide([...state.give], state.giveMoney)} et reçoit `
+        + `${g.formatTradeSide([...state.take], state.takeMoney)} de ${partner.name}.`;
     };
 
     const addButton = (bar, label, cls, onClick) => {
@@ -484,8 +482,7 @@ export class UI {
       let rows = owned.map((i) => {
         const t = g.tiles[i];
         // Règle classique : le groupe doit être libre de constructions
-        const blocked = t.houses > 0
-          || (t.type === 'property' && GROUPS[t.group].some((j) => g.tiles[j].houses > 0));
+        const blocked = g.groupHasBuildings(i);
         return `<div class="trade-row${sel.has(i) ? ' selected' : ''}${blocked ? ' blocked' : ''}"
             data-idx="${i}" data-side="${side}"${blocked ? ' title="Vendez les constructions d\'abord"' : ''}>
           <span class="swatch big" style="background:${tileColor(t)}"></span>

@@ -296,6 +296,7 @@ export class Game {
         if (q.money < currentBid + MIN_RAISE) {
           // Plus les moyens de surenchérir : sort de l'enchère
           active.delete(q.id);
+          this.view.log(`${q.name} ne peut plus suivre l'enchère.`);
           continue;
         }
         const bid = await this.decide(q, 'auction', {
@@ -501,7 +502,8 @@ export class Game {
 
   async decide(p, type, data) {
     if (p.isAI) {
-      await this.view.aiThink();
+      // Réflexion écourtée pendant les enchères : beaucoup de décisions s'enchaînent
+      await this.view.aiThink(type === 'auction' ? 120 : undefined);
       return aiDecide(this, p, type, data);
     }
     return this.view.promptHuman(p, type, data);
@@ -511,18 +513,13 @@ export class Game {
 
   canBuild(playerId, idx) {
     const t = this.tiles[idx];
-    if (t.type !== 'property' || t.owner !== playerId || t.houses >= 5) return false;
-    if (!this.ownsFullGroup(playerId, t.group)) return false;
-    const group = GROUPS[t.group].map((i) => this.tiles[i]);
-    if (group.some((g) => g.mortgaged)) return false;
-    const minHouses = Math.min(...group.map((g) => g.houses));
-    if (t.houses > minHouses) return false; // construction uniforme
-    return this.players[playerId].money >= t.houseCost;
+    if (t.type !== 'property' || t.owner !== playerId) return false;
+    return this.buildBlockReason(playerId, idx) === null;
   }
 
   // Explique pourquoi canBuild refuse : null si la construction est possible,
   // ou si la case n'est pas une propriété du joueur (aucun bouton dans ce cas).
-  // Les vérifications doivent rester alignées sur celles de canBuild ci-dessus.
+  // Source unique des règles de construction : canBuild s'appuie dessus.
   buildBlockReason(playerId, idx) {
     const t = this.tiles[idx];
     if (t.type !== 'property' || t.owner !== playerId) return null;
@@ -569,11 +566,20 @@ export class Game {
     return true;
   }
 
+  // Vrai si la case porte des constructions ou si, pour une propriété,
+  // une case de son groupe de couleur en porte. Règle partagée par
+  // l'hypothèque et les échanges (on vend les maisons d'abord).
+  groupHasBuildings(idx) {
+    const t = this.tiles[idx];
+    if (t.houses > 0) return true;
+    if (t.type !== 'property') return false;
+    return GROUPS[t.group].some((i) => this.tiles[i].houses > 0);
+  }
+
   canMortgage(playerId, idx) {
     const t = this.tiles[idx];
     if (t.owner !== playerId || t.mortgaged) return false;
-    if (t.type === 'property' && GROUPS[t.group].some((i) => this.tiles[i].houses > 0)) return false;
-    return true;
+    return !this.groupHasBuildings(idx);
   }
 
   mortgage(playerId, idx) {
@@ -636,8 +642,7 @@ export class Game {
         if (!t || !OWNABLE.includes(t.type)) return 'Case non échangeable';
         if (t.owner !== owner.id) return `${t.name} n'appartient pas à ${owner.name}`;
         // Règle classique : on vend les constructions avant d'échanger le groupe
-        if (t.houses > 0
-          || (t.type === 'property' && GROUPS[t.group].some((j) => this.tiles[j].houses > 0))) {
+        if (this.groupHasBuildings(i)) {
           return `Vendez d'abord les constructions du groupe de ${t.name}`;
         }
       }
@@ -649,6 +654,14 @@ export class Game {
 
   canTrade(offer) {
     return this.tradeBlockReason(offer) === null;
+  }
+
+  // Formatte un côté d'un échange (« Case + Case + 100 € », ou « rien »).
+  // Utilisé par le journal du moteur et par le résumé de la modale d'échange.
+  formatTradeSide(tileIdxs, money) {
+    const parts = tileIdxs.map((i) => this.tiles[i].name);
+    if (money > 0) parts.push(formatMoney(money));
+    return parts.length > 0 ? parts.join(' + ') : 'rien';
   }
 
   executeTrade(offer) {
@@ -672,13 +685,8 @@ export class Game {
       this.view.setOwner(i, from);
     }
     if (giveMoney > 0 || takeMoney > 0) this.view.sfx?.('cash');
-    const side = (tiles, money) => {
-      const parts = tiles.map((i) => this.tiles[i].name);
-      if (money > 0) parts.push(formatMoney(money));
-      return parts.length > 0 ? parts.join(' + ') : 'rien';
-    };
     this.view.log(
-      `🔁 ${from.name} échange ${side(giveTiles, giveMoney)} contre ${side(takeTiles, takeMoney)} avec ${to.name}.`,
+      `🔁 ${from.name} échange ${this.formatTradeSide(giveTiles, giveMoney)} contre ${this.formatTradeSide(takeTiles, takeMoney)} avec ${to.name}.`,
       'good',
     );
     if (mortgagedMoved) {
