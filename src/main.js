@@ -103,9 +103,10 @@ async function startGame(configs, snapshot = null) {
   initSounds(); // appelé après un clic utilisateur : l'audio est autorisé
   const muteBtn = $('#mute-btn');
   muteBtn.textContent = isMuted() ? '🔇' : '🔊';
-  muteBtn.onclick = () => { muteBtn.textContent = toggleMute() ? '🔇' : '🔊'; };
+  // blur après usage : sinon Espace re-déclencherait le contrôle au lieu des dés
+  muteBtn.onclick = () => { muteBtn.textContent = toggleMute() ? '🔇' : '🔊'; muteBtn.blur(); };
 
-  $('#speed').onchange = (e) => { scene.speed = Number(e.target.value); };
+  $('#speed').onchange = (e) => { scene.speed = Number(e.target.value); e.target.blur(); };
 
   const view = {
     log: (msg, cls) => ui.log(msg, cls),
@@ -154,6 +155,7 @@ async function startGame(configs, snapshot = null) {
 
     promptHuman(p, type, data) {
       if (type === 'buy') return ui.promptBuy(p, data.idx);
+      if (type === 'auction') return ui.promptAuction(p, data);
       if (type === 'jail') return ui.promptJail(p, data);
       return Promise.resolve(null);
     },
@@ -167,7 +169,7 @@ async function startGame(configs, snapshot = null) {
     },
 
     managePhase: (p) => ui.managePhase(p),
-    aiThink: () => scene.delay(450),
+    aiThink: (ms = 450) => scene.delay(ms),
     announceWinner: (p) => { clearSave(); playSound('win'); return ui.announceWinner(p); },
   };
 

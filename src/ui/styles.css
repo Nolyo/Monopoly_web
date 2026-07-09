@@ -151,6 +151,20 @@ html, body {
 .action-btn.danger { background: #7a1d1d; }
 .action-btn.big { font-size: 18px; padding: 15px 34px; width: 100%; }
 
+/* pastille de raccourci clavier dans le bouton principal */
+.key-hint kbd {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 500;
+  vertical-align: 1px;
+  margin-left: 2px;
+}
+
 /* ------------------------------------------------- modales */
 #modal-root { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
 .modal-overlay {
@@ -233,7 +247,73 @@ html, body {
   border: 1px solid var(--panel-border); border-radius: 6px;
   font-size: 11.5px; padding: 4px 8px; cursor: pointer; font-family: inherit;
 }
-.mini-btn:hover { background: #3a5070; }
+.mini-btn:hover:not(:disabled) { background: #3a5070; }
+.mini-btn:disabled { opacity: 0.45; cursor: default; }
+.manage-hint { font-size: 10.5px; color: var(--muted); align-self: center; }
+
+/* échanges */
+.trade-box { max-width: 640px; }
+.trade-partners { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.trade-partner-btn {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.05); color: var(--text);
+  border: 1px solid var(--panel-border); border-radius: 8px;
+  padding: 10px 12px; font-size: 14px; cursor: pointer;
+  font-family: inherit; text-align: left; transition: background 0.15s;
+}
+.trade-partner-btn:hover { background: rgba(255,255,255,0.1); }
+.trade-partner-money { margin-left: auto; color: #ffd76a; font-weight: 700; }
+
+.trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+.trade-col { min-width: 0; }
+.trade-col-head {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; font-weight: 600; margin-bottom: 7px;
+}
+.trade-list { display: flex; flex-direction: column; gap: 5px; max-height: 34vh; overflow-y: auto; }
+.trade-row {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid transparent;
+  border-radius: 8px; padding: 6px 9px; font-size: 12.5px;
+  cursor: pointer; user-select: none;
+}
+.trade-row:hover:not(.blocked) { background: rgba(255,255,255,0.1); }
+.trade-row.selected { border-color: var(--accent); background: rgba(224, 69, 58, 0.16); }
+.trade-row.blocked { opacity: 0.4; cursor: not-allowed; }
+.trade-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trade-price { color: var(--muted); font-size: 11.5px; flex-shrink: 0; }
+.trade-empty { color: var(--muted); font-size: 12.5px; padding: 6px 2px; }
+.trade-money-label {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 9px; font-size: 13px; color: var(--muted);
+}
+.trade-money {
+  width: 100px; background: #1d2733; color: var(--text);
+  border: 1px solid var(--panel-border); border-radius: 8px;
+  padding: 7px 10px; font-size: 14px; font-family: inherit;
+}
+.trade-money:focus { outline: 2px solid rgba(224, 69, 58, 0.6); }
+.trade-summary {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border);
+  border-radius: 8px; padding: 9px 12px;
+  font-size: 13px; margin-top: 12px;
+}
+.trade-reason { font-size: 12px; color: var(--bad); margin-top: 6px; min-height: 15px; }
+@media (max-width: 700px) { .trade-cols { grid-template-columns: 1fr; } }
+
+/* enchères */
+.auction-status {
+  background: rgba(255,255,255,0.05); border: 1px solid var(--panel-border);
+  border-radius: 8px; padding: 8px 12px;
+  font-size: 13px; margin-top: 12px;
+}
+.auction-status b { color: #ffd76a; }
+.auction-player {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--muted); margin-top: 9px;
+}
+.auction-quick { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
 
 /* victoire */
 .winner { text-align: center; padding: 10px; }

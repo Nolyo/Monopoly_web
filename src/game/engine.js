@@ -1,5 +1,5 @@
 import {
-  TILES, GROUPS, GO_SALARY, JAIL_FINE, JAIL_INDEX, STARTING_MONEY,
+  TILES, GROUPS, GO_SALARY, JAIL_FINE, JAIL_INDEX, STARTING_MONEY, formatMoney,
 } from './data.js';
 import { CHANCE_CARDS, CHEST_CARDS, makeDeck, restoreDeck } from './cards.js';
 import { aiDecide, aiManage } from './ai.js';
@@ -245,11 +245,16 @@ export class Game {
     if (tile.owner === null) {
       if (p.money >= tile.price) {
         const wants = await this.decide(p, 'buy', { idx, tile });
-        if (wants) await this.buyTile(p, idx);
-        else this.view.log(`${p.name} ne souhaite pas acheter ${tile.name}.`);
+        if (wants) {
+          await this.buyTile(p, idx);
+          return;
+        }
+        this.view.log(`${p.name} ne souhaite pas acheter ${tile.name}.`);
       } else {
         this.view.log(`${p.name} n'a pas les moyens d'acheter ${tile.name}.`);
       }
+      // Règle officielle : refus (ou fonds insuffisants) → mise aux enchères
+      await this.runAuction(idx);
       return;
     }
     if (tile.owner === p.id) return;
@@ -261,6 +266,69 @@ export class Game {
     const rent = this.rentOf(idx, diceSum);
     this.view.log(`${p.name} doit ${rent} € de loyer à ${owner.name}.`, 'bad');
     await this.charge(p, rent, owner, `le loyer de ${tile.name}`);
+  }
+
+  // Enchères ascendantes (règle officielle) : la case est proposée à TOUS les
+  // joueurs non en faillite, y compris celui qui vient de refuser l'achat.
+  // À chaque tour de table, chaque enchérisseur encore actif (et qui n'est pas
+  // déjà le plus offrant) surenchérit d'au moins 10 € ou passe — un joueur qui
+  // passe est éliminé pour le reste de l'enchère (simplification classique qui
+  // garantit la terminaison : les mises croissent strictement et l'argent est
+  // fini). Le gagnant paie sa mise, qui peut être inférieure OU supérieure au
+  // prix affiché de la case. Si personne n'enchérit, la case reste à la banque.
+  async runAuction(idx) {
+    const tile = this.tiles[idx];
+    const MIN_RAISE = 10;
+    this.view.log(`🔨 ${tile.name} est mis aux enchères !`);
+    let currentBid = 0;
+    let highestBidderId = null;
+    // Tour de table dans l'ordre de jeu, à partir du joueur courant
+    const order = [];
+    for (let k = 0; k < this.players.length; k++) {
+      const q = this.players[(this.current + k) % this.players.length];
+      if (!q.bankrupt) order.push(q);
+    }
+    const active = new Set(order.map((q) => q.id));
+    for (;;) {
+      for (const q of order) {
+        if (!active.has(q.id)) continue; // a déjà passé
+        if (q.id === highestBidderId) continue; // déjà le plus offrant
+        if (q.money < currentBid + MIN_RAISE) {
+          // Plus les moyens de surenchérir : sort de l'enchère
+          active.delete(q.id);
+          this.view.log(`${q.name} ne peut plus suivre l'enchère.`);
+          continue;
+        }
+        const bid = await this.decide(q, 'auction', {
+          idx,
+          tile,
+          currentBid,
+          minRaise: MIN_RAISE,
+          highestBidder: highestBidderId === null ? null : this.players[highestBidderId].name,
+        });
+        if (!Number.isInteger(bid) || bid < currentBid + MIN_RAISE || bid > q.money) {
+          active.delete(q.id); // passe : définitif
+          this.view.log(`${q.name} passe.`);
+          continue;
+        }
+        currentBid = bid;
+        highestBidderId = q.id;
+        this.view.log(`🔨 ${q.name} enchérit ${formatMoney(currentBid)} sur ${tile.name}.`);
+      }
+      // Fin quand il ne reste plus d'enchérisseur actif hormis le plus offrant
+      if ([...active].every((id) => id === highestBidderId)) break;
+    }
+    if (highestBidderId === null) {
+      this.view.log(`🔨 Personne n'enchérit pour ${tile.name} — la propriété reste à la banque.`);
+      return;
+    }
+    const winner = this.players[highestBidderId];
+    winner.money -= currentBid;
+    tile.owner = winner.id;
+    this.view.sfx?.('buy');
+    this.view.log(`🔨 ${winner.name} remporte ${tile.name} aux enchères pour ${formatMoney(currentBid)}.`, 'good');
+    this.view.setOwner(idx, winner);
+    this.view.updatePlayers();
   }
 
   async buyTile(p, idx) {
@@ -434,7 +502,8 @@ export class Game {
 
   async decide(p, type, data) {
     if (p.isAI) {
-      await this.view.aiThink();
+      // Réflexion écourtée pendant les enchères : beaucoup de décisions s'enchaînent
+      await this.view.aiThink(type === 'auction' ? 120 : undefined);
       return aiDecide(this, p, type, data);
     }
     return this.view.promptHuman(p, type, data);
@@ -444,13 +513,24 @@ export class Game {
 
   canBuild(playerId, idx) {
     const t = this.tiles[idx];
-    if (t.type !== 'property' || t.owner !== playerId || t.houses >= 5) return false;
-    if (!this.ownsFullGroup(playerId, t.group)) return false;
+    if (t.type !== 'property' || t.owner !== playerId) return false;
+    return this.buildBlockReason(playerId, idx) === null;
+  }
+
+  // Explique pourquoi canBuild refuse : null si la construction est possible,
+  // ou si la case n'est pas une propriété du joueur (aucun bouton dans ce cas).
+  // Source unique des règles de construction : canBuild s'appuie dessus.
+  buildBlockReason(playerId, idx) {
+    const t = this.tiles[idx];
+    if (t.type !== 'property' || t.owner !== playerId) return null;
+    if (t.houses >= 5) return 'Hôtel déjà construit';
+    if (!this.ownsFullGroup(playerId, t.group)) return 'Groupe incomplet';
     const group = GROUPS[t.group].map((i) => this.tiles[i]);
-    if (group.some((g) => g.mortgaged)) return false;
+    if (group.some((g) => g.mortgaged)) return 'Hypothèque dans le groupe';
     const minHouses = Math.min(...group.map((g) => g.houses));
-    if (t.houses > minHouses) return false; // construction uniforme
-    return this.players[playerId].money >= t.houseCost;
+    if (t.houses > minHouses) return 'Construction uniforme requise';
+    if (this.players[playerId].money < t.houseCost) return 'Fonds insuffisants';
+    return null;
   }
 
   build(playerId, idx) {
@@ -486,11 +566,20 @@ export class Game {
     return true;
   }
 
+  // Vrai si la case porte des constructions ou si, pour une propriété,
+  // une case de son groupe de couleur en porte. Règle partagée par
+  // l'hypothèque et les échanges (on vend les maisons d'abord).
+  groupHasBuildings(idx) {
+    const t = this.tiles[idx];
+    if (t.houses > 0) return true;
+    if (t.type !== 'property') return false;
+    return GROUPS[t.group].some((i) => this.tiles[i].houses > 0);
+  }
+
   canMortgage(playerId, idx) {
     const t = this.tiles[idx];
     if (t.owner !== playerId || t.mortgaged) return false;
-    if (t.type === 'property' && GROUPS[t.group].some((i) => this.tiles[i].houses > 0)) return false;
-    return true;
+    return !this.groupHasBuildings(idx);
   }
 
   mortgage(playerId, idx) {
@@ -523,6 +612,86 @@ export class Game {
     t.mortgaged = false;
     this.view.log(`${p.name} lève l'hypothèque de ${t.name}.`);
     this.view.setMortgaged(idx, false);
+    this.view.updatePlayers();
+    return true;
+  }
+
+  // ----- Échanges entre joueurs -----
+  // offer = { fromId, toId, giveTiles: [idx], giveMoney, takeTiles: [idx], takeMoney }
+  // `give*` = ce que fromId donne, `take*` = ce que fromId reçoit de toId.
+
+  // Explique pourquoi l'échange est impossible : null si l'offre est valide.
+  // Les vérifications doivent rester alignées sur canTrade/executeTrade.
+  tradeBlockReason(offer) {
+    const {
+      fromId, toId, giveTiles = [], takeTiles = [], giveMoney = 0, takeMoney = 0,
+    } = offer;
+    const from = this.players[fromId];
+    const to = this.players[toId];
+    if (!from || !to) return 'Joueur introuvable';
+    if (fromId === toId) return 'Impossible d\'échanger avec soi-même';
+    if (from.bankrupt || to.bankrupt) return 'Joueur en faillite';
+    if (!Number.isInteger(giveMoney) || !Number.isInteger(takeMoney)
+      || giveMoney < 0 || takeMoney < 0) return 'Montant invalide';
+    if (giveTiles.length === 0 && takeTiles.length === 0
+      && giveMoney === 0 && takeMoney === 0) return 'Offre vide';
+    const OWNABLE = ['property', 'station', 'utility'];
+    for (const [tiles, owner] of [[giveTiles, from], [takeTiles, to]]) {
+      for (const i of tiles) {
+        const t = this.tiles[i];
+        if (!t || !OWNABLE.includes(t.type)) return 'Case non échangeable';
+        if (t.owner !== owner.id) return `${t.name} n'appartient pas à ${owner.name}`;
+        // Règle classique : on vend les constructions avant d'échanger le groupe
+        if (this.groupHasBuildings(i)) {
+          return `Vendez d'abord les constructions du groupe de ${t.name}`;
+        }
+      }
+    }
+    if (from.money < giveMoney) return `Fonds insuffisants pour ${from.name}`;
+    if (to.money < takeMoney) return `Fonds insuffisants pour ${to.name}`;
+    return null;
+  }
+
+  canTrade(offer) {
+    return this.tradeBlockReason(offer) === null;
+  }
+
+  // Formatte un côté d'un échange (« Case + Case + 100 € », ou « rien »).
+  // Utilisé par le journal du moteur et par le résumé de la modale d'échange.
+  formatTradeSide(tileIdxs, money) {
+    const parts = tileIdxs.map((i) => this.tiles[i].name);
+    if (money > 0) parts.push(formatMoney(money));
+    return parts.length > 0 ? parts.join(' + ') : 'rien';
+  }
+
+  executeTrade(offer) {
+    if (!this.canTrade(offer)) return false;
+    const {
+      fromId, toId, giveTiles = [], takeTiles = [], giveMoney = 0, takeMoney = 0,
+    } = offer;
+    const from = this.players[fromId];
+    const to = this.players[toId];
+    from.money += takeMoney - giveMoney;
+    to.money += giveMoney - takeMoney;
+    let mortgagedMoved = false;
+    for (const i of giveTiles) {
+      this.tiles[i].owner = toId;
+      if (this.tiles[i].mortgaged) mortgagedMoved = true;
+      this.view.setOwner(i, to);
+    }
+    for (const i of takeTiles) {
+      this.tiles[i].owner = fromId;
+      if (this.tiles[i].mortgaged) mortgagedMoved = true;
+      this.view.setOwner(i, from);
+    }
+    if (giveMoney > 0 || takeMoney > 0) this.view.sfx?.('cash');
+    this.view.log(
+      `🔁 ${from.name} échange ${this.formatTradeSide(giveTiles, giveMoney)} contre ${this.formatTradeSide(takeTiles, takeMoney)} avec ${to.name}.`,
+      'good',
+    );
+    if (mortgagedMoved) {
+      this.view.log('Les hypothèques sont transférées avec les propriétés échangées.');
+    }
     this.view.updatePlayers();
     return true;
   }

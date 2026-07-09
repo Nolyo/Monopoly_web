@@ -1,8 +1,13 @@
 import {
-  GROUPS, GROUP_COLORS, GROUP_NAMES, formatMoney,
+  GROUP_COLORS, GROUP_NAMES, formatMoney,
 } from '../game/data.js';
+import { aiEvaluateTrade } from '../game/ai.js';
 
 const $ = (sel) => document.querySelector(sel);
+
+// Couleur de pastille d'une case possédable (gestion et échanges)
+const tileColor = (t) => (t.type === 'property' ? GROUP_COLORS[t.group]
+  : t.type === 'station' ? '#2b2b2b' : '#6b6b3a');
 
 export class UI {
   constructor() {
@@ -13,6 +18,20 @@ export class UI {
     this.turnBanner = $('#turn-banner');
     this.game = null;
     this.speed = 1;
+
+    // Raccourci clavier : Espace déclenche l'action principale (lancer les dés, fin du tour)
+    document.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' || e.repeat) return;
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      if (this.modalRoot.childElementCount > 0) return; // les modales ont leurs propres boutons
+      const setup = document.querySelector('#setup');
+      if (setup && !setup.classList.contains('hidden')) return; // partie non commencée
+      const primary = this.actionsEl.querySelector('.action-btn.primary');
+      if (!primary || primary.disabled) return;
+      e.preventDefault(); // évite le défilement de la page
+      primary.click();
+    });
   }
 
   bind(game) {
@@ -79,8 +98,12 @@ export class UI {
       const btn = document.createElement('button');
       btn.className = `action-btn ${b.cls || ''}`;
       btn.innerHTML = b.label;
+      if (b.cls === 'primary' && !b.disabled) {
+        btn.innerHTML += ' <span class="key-hint"><kbd>Espace</kbd></span>';
+      }
       btn.disabled = !!b.disabled;
-      btn.onclick = b.onClick;
+      // blur après clic : sinon Espace réactiverait le bouton resté focalisé
+      btn.onclick = () => { btn.blur(); b.onClick?.(); };
       this.actionsEl.appendChild(btn);
     }
   }
@@ -102,6 +125,7 @@ export class UI {
           onClick: () => { this.clearActions(); resolve(); },
         },
         { label: '🏘️ Gérer', onClick: () => this.openManageModal(p) },
+        { label: '🔁 Échanger', onClick: () => this.openTradeModal(p) },
       ]);
     });
   }
@@ -110,6 +134,7 @@ export class UI {
     return new Promise((resolve) => {
       this.setActions([
         { label: '🏘️ Gérer mes propriétés', onClick: () => this.openManageModal(p) },
+        { label: '🔁 Échanger', onClick: () => this.openTradeModal(p) },
         {
           label: '✅ Fin du tour',
           cls: 'primary',
@@ -219,6 +244,71 @@ export class UI {
     return res === true;
   }
 
+  // Modale d'enchère : boutons de relance rapide (×1/×5/×10 la relance
+  // minimale) qui misent immédiatement, ou mise libre via le champ numérique.
+  // Résout avec le montant misé (entier) ou null si le joueur passe (définitif).
+  promptAuction(p, { idx, currentBid, minRaise, highestBidder }) {
+    return new Promise((resolve) => {
+      const t = this.game.tiles[idx];
+      const minBid = currentBid + minRaise;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      const box = document.createElement('div');
+      box.className = 'modal-box auction-box';
+      const statusLine = highestBidder !== null
+        ? `Mise actuelle : <b>${formatMoney(currentBid)}</b> par <b>${escapeHtml(highestBidder)}</b>`
+        : 'Aucune mise pour le moment.';
+      const quick = [minRaise, minRaise * 5, minRaise * 10].map((n) => {
+        const bid = currentBid + n;
+        return `<button class="mini-btn auction-raise" data-bid="${bid}"${bid > p.money ? ' disabled' : ''}>+${n} € → ${formatMoney(bid)}</button>`;
+      }).join('');
+      box.innerHTML = `
+        <h2>🔨 Enchère — ${escapeHtml(t.name)}</h2>
+        ${this.deedHtml(idx)}
+        <div class="auction-status">${statusLine}</div>
+        <div class="auction-player">
+          <span class="token-dot" style="background:${p.color}"></span>
+          À vous, <b>${escapeHtml(p.name)}</b> — liquidités : <b>${formatMoney(p.money)}</b>
+        </div>
+        <div class="auction-quick">${quick}</div>
+        <label class="trade-money-label">Mise libre
+          <input type="number" class="trade-money auction-input"
+            min="${minBid}" max="${p.money}" step="10" value="${minBid}"> €
+        </label>`;
+      const bar = document.createElement('div');
+      bar.className = 'modal-buttons';
+      const done = (value) => { overlay.remove(); resolve(value); };
+      const passBtn = document.createElement('button');
+      passBtn.className = 'action-btn';
+      passBtn.textContent = 'Passer (définitif)';
+      passBtn.onclick = () => done(null);
+      bar.appendChild(passBtn);
+      const bidBtn = document.createElement('button');
+      bidBtn.className = 'action-btn primary';
+      bidBtn.textContent = 'Enchérir';
+      bar.appendChild(bidBtn);
+      box.appendChild(bar);
+
+      const input = box.querySelector('.auction-input');
+      const readBid = () => Math.floor(Number(input.value) || 0);
+      const update = () => {
+        const bid = readBid();
+        bidBtn.disabled = bid < minBid || bid > p.money;
+      };
+      input.oninput = update;
+      update();
+      bidBtn.onclick = () => {
+        const bid = readBid();
+        if (bid >= minBid && bid <= p.money) done(bid);
+      };
+      box.querySelectorAll('.auction-raise').forEach((btn) => {
+        btn.onclick = () => done(Number(btn.dataset.bid));
+      });
+      overlay.appendChild(box);
+      this.modalRoot.appendChild(overlay);
+    });
+  }
+
   async promptJail(p, data) {
     const buttons = [];
     if (data.hasCard) buttons.push({ label: '🎫 Utiliser ma carte', value: 'card', cls: 'primary' });
@@ -269,13 +359,18 @@ export class UI {
         html += '<div class="manage-list">';
         for (const i of owned) {
           const t = g.tiles[i];
-          const color = t.type === 'property' ? GROUP_COLORS[t.group] : t.type === 'station' ? '#2b2b2b' : '#6b6b3a';
           const houses = t.houses === 5 ? '🏨' : '🏠'.repeat(t.houses);
+          // Bouton de construction dérivé d'une seule source (buildBlockReason) :
+          // raison nulle → bouton actif ; groupe incomplet (ou case non
+          // constructible) → pas de bouton ; autre blocage → bouton grisé + raison.
+          const buildReason = g.buildBlockReason(p.id, i);
+          const buildBtn = (t.type !== 'property' || buildReason === 'Groupe incomplet') ? ''
+            : `<button data-act="build" class="mini-btn"${buildReason ? ` disabled title="${buildReason}"` : ''}>🏠 +${formatMoney(t.houseCost)}</button>${buildReason ? `<span class="manage-hint">${buildReason}</span>` : ''}`;
           html += `<div class="manage-row${t.mortgaged ? ' mortgaged' : ''}">
-            <span class="swatch big" style="background:${color}"></span>
+            <span class="swatch big" style="background:${tileColor(t)}"></span>
             <span class="manage-name">${escapeHtml(t.name)} ${houses}${t.mortgaged ? ' <i>(hyp.)</i>' : ''}</span>
             <span class="manage-actions" data-idx="${i}">
-              ${g.canBuild(p.id, i) ? `<button data-act="build" class="mini-btn">🏠 +${formatMoney(t.houseCost)}</button>` : ''}
+              ${buildBtn}
               ${g.canSellHouse(p.id, i) ? `<button data-act="sellHouse" class="mini-btn">Vendre 🏠 (+${formatMoney(t.houseCost / 2)})</button>` : ''}
               ${g.canMortgage(p.id, i) ? `<button data-act="mortgage" class="mini-btn">Hypothéquer (+${formatMoney(t.price / 2)})</button>` : ''}
               ${g.canUnmortgage(p.id, i) ? `<button data-act="unmortgage" class="mini-btn">Lever (−${formatMoney(g.unmortgageCost(i))})</button>` : ''}
@@ -313,6 +408,193 @@ export class UI {
       };
       render();
     });
+  }
+
+  // ------------------------------------------------- échanges
+  // Modale à état (comme openManageModal) : étape 1 = choix du partenaire,
+  // étape 2 = composition de l'offre (deux colonnes + argent), puis proposition.
+  openTradeModal(p) {
+    const g = this.game;
+    const partners = g.players.filter((q) => q.id !== p.id && !q.bankrupt);
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const box = document.createElement('div');
+    box.className = 'modal-box manage-box trade-box';
+    overlay.appendChild(box);
+    this.modalRoot.appendChild(overlay);
+
+    const state = { partnerId: null, give: new Set(), take: new Set(), giveMoney: 0, takeMoney: 0 };
+    const close = () => overlay.remove();
+
+    const offer = () => ({
+      fromId: p.id,
+      toId: state.partnerId,
+      giveTiles: [...state.give],
+      giveMoney: state.giveMoney,
+      takeTiles: [...state.take],
+      takeMoney: state.takeMoney,
+    });
+
+    const summaryText = () => {
+      const partner = g.players[state.partnerId];
+      return `${p.name} donne ${g.formatTradeSide([...state.give], state.giveMoney)} et reçoit `
+        + `${g.formatTradeSide([...state.take], state.takeMoney)} de ${partner.name}.`;
+    };
+
+    const addButton = (bar, label, cls, onClick) => {
+      const btn = document.createElement('button');
+      btn.className = `action-btn ${cls}`;
+      btn.textContent = label;
+      btn.onclick = onClick;
+      bar.appendChild(btn);
+      return btn;
+    };
+
+    // --- Étape 1 : choix du partenaire ---
+    const renderPartnerChoice = () => {
+      let html = `<h2>🔁 Échanger — ${escapeHtml(p.name)}</h2>`;
+      if (partners.length === 0) {
+        html += '<p>Aucun partenaire disponible.</p>';
+      } else {
+        html += '<p>Avec qui souhaitez-vous échanger ?</p><div class="trade-partners">'
+          + partners.map((q) => `
+            <button class="trade-partner-btn" data-id="${q.id}">
+              <span class="token-dot" style="background:${q.color}"></span>
+              <span>${escapeHtml(q.name)}${q.isAI ? ' 🤖' : ''}</span>
+              <span class="trade-partner-money">${formatMoney(q.money)}</span>
+            </button>`).join('')
+          + '</div>';
+      }
+      box.innerHTML = html;
+      const bar = document.createElement('div');
+      bar.className = 'modal-buttons';
+      addButton(bar, 'Annuler', '', close);
+      box.appendChild(bar);
+      box.querySelectorAll('.trade-partner-btn').forEach((btn) => {
+        btn.onclick = () => { state.partnerId = Number(btn.dataset.id); renderTrade(); };
+      });
+    };
+
+    // --- Étape 2 : composition de l'offre ---
+    const colHtml = (player, side) => {
+      const sel = side === 'give' ? state.give : state.take;
+      const owned = g.ownedTiles(player.id);
+      let rows = owned.map((i) => {
+        const t = g.tiles[i];
+        // Règle classique : le groupe doit être libre de constructions
+        const blocked = g.groupHasBuildings(i);
+        return `<div class="trade-row${sel.has(i) ? ' selected' : ''}${blocked ? ' blocked' : ''}"
+            data-idx="${i}" data-side="${side}"${blocked ? ' title="Vendez les constructions d\'abord"' : ''}>
+          <span class="swatch big" style="background:${tileColor(t)}"></span>
+          <span class="trade-name">${escapeHtml(t.name)}${t.mortgaged ? ' <i>(hyp.)</i>' : ''}</span>
+          <span class="trade-price">${formatMoney(t.price)}</span>
+        </div>`;
+      }).join('');
+      if (owned.length === 0) rows = '<div class="trade-empty">Aucune propriété</div>';
+      return `<div class="trade-col">
+        <div class="trade-col-head">
+          <span class="token-dot" style="background:${player.color}"></span>
+          ${escapeHtml(player.name)} donne
+        </div>
+        <div class="trade-list">${rows}</div>
+        <label class="trade-money-label">Argent
+          <input type="number" class="trade-money" data-side="${side}"
+            min="0" step="10" max="${player.money}"
+            value="${side === 'give' ? state.giveMoney : state.takeMoney}"> €
+        </label>
+      </div>`;
+    };
+
+    const renderTrade = () => {
+      const partner = g.players[state.partnerId];
+      box.innerHTML = `<h2>🔁 Échange avec ${escapeHtml(partner.name)}</h2>
+        <div class="trade-cols">${colHtml(p, 'give')}${colHtml(partner, 'take')}</div>
+        <div class="trade-summary"></div>
+        <div class="trade-reason"></div>`;
+      const bar = document.createElement('div');
+      bar.className = 'modal-buttons';
+      if (partners.length > 1) {
+        addButton(bar, '↩️ Partenaire', '', () => {
+          state.partnerId = null;
+          state.give.clear();
+          state.take.clear();
+          state.giveMoney = 0;
+          state.takeMoney = 0;
+          renderPartnerChoice();
+        });
+      }
+      addButton(bar, 'Annuler', '', close);
+      const proposeBtn = addButton(bar, 'Proposer', 'primary', () => propose());
+      box.appendChild(bar);
+
+      const summaryEl = box.querySelector('.trade-summary');
+      const reasonEl = box.querySelector('.trade-reason');
+      const update = () => {
+        const reason = g.tradeBlockReason(offer());
+        summaryEl.textContent = summaryText();
+        reasonEl.textContent = reason ?? '';
+        proposeBtn.disabled = reason !== null;
+      };
+
+      box.querySelectorAll('.trade-row:not(.blocked)').forEach((row) => {
+        row.onclick = () => {
+          const idx = Number(row.dataset.idx);
+          const sel = row.dataset.side === 'give' ? state.give : state.take;
+          if (sel.has(idx)) sel.delete(idx);
+          else sel.add(idx);
+          row.classList.toggle('selected');
+          update();
+        };
+      });
+      box.querySelectorAll('.trade-money').forEach((input) => {
+        input.oninput = () => {
+          const v = Math.max(0, Math.floor(Number(input.value) || 0));
+          if (input.dataset.side === 'give') state.giveMoney = v;
+          else state.takeMoney = v;
+          update();
+        };
+      });
+      update();
+    };
+
+    const propose = async () => {
+      const o = offer();
+      if (g.tradeBlockReason(o) !== null) return;
+      const partner = g.players[state.partnerId];
+      if (partner.isAI) {
+        if (aiEvaluateTrade(g, partner, o)) {
+          close();
+          g.executeTrade(o);
+          this.toast(`🤝 ${partner.name} accepte l'échange !`);
+        } else {
+          this.toast(`❌ ${partner.name} refuse l'échange.`);
+        }
+        return;
+      }
+      // Partenaire humain (même appareil) : on lui adresse la confirmation
+      const res = await this.showModal(
+        `<h2>🤝 Proposition d'échange</h2>
+         <p><b>${escapeHtml(partner.name)}</b>, acceptes-tu cet échange ?</p>
+         <div class="trade-summary">${escapeHtml(summaryText())}</div>`,
+        [
+          { label: 'Refuser', value: false },
+          { label: 'Accepter', value: true, cls: 'primary' },
+        ],
+      );
+      if (res === true) {
+        close();
+        g.executeTrade(o);
+      }
+      // Refus : la modale d'échange reste ouverte, sélections conservées
+    };
+
+    // Un seul adversaire possible : on saute l'étape de sélection
+    if (partners.length === 1) {
+      state.partnerId = partners[0].id;
+      renderTrade();
+    } else {
+      renderPartnerChoice();
+    }
   }
 
   async promptRaiseMoney(p, amount) {

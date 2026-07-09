@@ -32,8 +32,10 @@ npm run preview
   - Prison : payer 50 €, carte « Libéré de prison » ou tenter un double (3 essais).
   - Trois doubles consécutifs = prison.
   - Faillites : les biens reviennent au créancier, dernier joueur en lice gagne.
+- 🔁 **Échanges entre joueurs** : proposez propriétés et argent (les hypothèques suivent la propriété) ; les IA évaluent votre offre et l'acceptent ou la refusent, les humains confirment sur le même appareil.
+- 🔨 **Enchères** : si un joueur refuse d'acheter (ou n'en a pas les moyens), la propriété est mise aux enchères entre tous les joueurs, comme le veut la règle officielle — elle peut partir bien en dessous… ou au-dessus de son prix. Les IA enchérissent selon la valeur stratégique de la case.
 - **IA à heuristiques** : achète en priorité ce qui complète ses groupes ou bloque les vôtres, construit sur ses monopoles, gère ses liquidités (hypothèque/vend en cas de besoin), choisit sa stratégie de sortie de prison selon l'avancement de la partie.
-- **Confort** : journal de partie, titres de propriété consultables en cliquant sur les cases, vitesse de jeu réglable (×1 à ×3).
+- **Confort** : journal de partie, titres de propriété consultables en cliquant sur les cases, vitesse de jeu réglable (×1 à ×3), barre **Espace** pour déclencher l'action principale (lancer les dés / finir le tour).
 - 💾 **Sauvegarde automatique** : la partie en cours est sauvegardée dans le navigateur à chaque tour. Au retour, choisissez « Reprendre la partie » ou « Nouvelle partie ».
 - 🔊 **Bruitages** — dés, déplacements, argent, prison, victoire… (sons CC0 de [Kenney](https://kenney.nl)) ; bouton 🔊/🔇 pour couper le son, choix mémorisé
 
@@ -58,6 +60,5 @@ Le moteur de jeu est découplé du rendu : il communique via une interface `view
 
 ## 📝 Limites connues (simplifications volontaires)
 
-- Pas d'enchères quand un joueur refuse d'acheter (règle officielle rarement jouée).
-- Pas d'échanges de propriétés entre joueurs.
+- Les IA ne proposent pas d'échanges d'elles-mêmes (elles répondent seulement aux offres).
 - Stock de maisons illimité.

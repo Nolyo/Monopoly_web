@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/save.test.mjs && node tests/sound.test.mjs"
+    "test": "node tests/save.test.mjs && node tests/sound.test.mjs && node tests/build.test.mjs && node tests/trade.test.mjs && node tests/auction.test.mjs"
   },
   "dependencies": {
     "three": "^0.180.0"
