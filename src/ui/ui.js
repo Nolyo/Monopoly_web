@@ -240,6 +240,71 @@ export class UI {
     return res === true;
   }
 
+  // Modale d'enchère : boutons de relance rapide (+10/+50/+100) qui misent
+  // immédiatement, ou mise libre via le champ numérique. Résout avec le
+  // montant misé (entier) ou null si le joueur passe (définitif).
+  promptAuction(p, { idx, currentBid, minRaise, highestBidder }) {
+    return new Promise((resolve) => {
+      const t = this.game.tiles[idx];
+      const minBid = currentBid + minRaise;
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      const box = document.createElement('div');
+      box.className = 'modal-box auction-box';
+      const statusLine = highestBidder !== null
+        ? `Mise actuelle : <b>${formatMoney(currentBid)}</b> par <b>${escapeHtml(highestBidder)}</b>`
+        : 'Aucune mise pour le moment.';
+      const quick = [10, 50, 100].map((n) => {
+        const bid = currentBid + n;
+        return `<button class="mini-btn auction-raise" data-bid="${bid}"${bid > p.money ? ' disabled' : ''}>+${n} € → ${formatMoney(bid)}</button>`;
+      }).join('');
+      box.innerHTML = `
+        <h2>🔨 Enchère — ${escapeHtml(t.name)}</h2>
+        ${this.deedHtml(idx)}
+        <div class="auction-status">${statusLine}</div>
+        <div class="auction-player">
+          <span class="token-dot" style="background:${p.color}"></span>
+          À vous, <b>${escapeHtml(p.name)}</b> — liquidités : <b>${formatMoney(p.money)}</b>
+        </div>
+        <div class="auction-quick">${quick}</div>
+        <label class="trade-money-label">Mise libre
+          <input type="number" class="trade-money auction-input"
+            min="${minBid}" max="${p.money}" step="10" value="${minBid}"> €
+        </label>`;
+      const bar = document.createElement('div');
+      bar.className = 'modal-buttons';
+      const done = (value) => { overlay.remove(); resolve(value); };
+      const passBtn = document.createElement('button');
+      passBtn.className = 'action-btn';
+      passBtn.textContent = 'Passer';
+      passBtn.onclick = () => done(null);
+      bar.appendChild(passBtn);
+      const bidBtn = document.createElement('button');
+      bidBtn.className = 'action-btn primary';
+      bidBtn.textContent = 'Enchérir';
+      bar.appendChild(bidBtn);
+      box.appendChild(bar);
+
+      const input = box.querySelector('.auction-input');
+      const readBid = () => Math.floor(Number(input.value) || 0);
+      const update = () => {
+        const bid = readBid();
+        bidBtn.disabled = bid < minBid || bid > p.money;
+      };
+      input.oninput = update;
+      update();
+      bidBtn.onclick = () => {
+        const bid = readBid();
+        if (bid >= minBid && bid <= p.money) done(bid);
+      };
+      box.querySelectorAll('.auction-raise').forEach((btn) => {
+        btn.onclick = () => done(Number(btn.dataset.bid));
+      });
+      overlay.appendChild(box);
+      this.modalRoot.appendChild(overlay);
+    });
+  }
+
   async promptJail(p, data) {
     const buttons = [];
     if (data.hasCard) buttons.push({ label: '🎫 Utiliser ma carte', value: 'card', cls: 'primary' });

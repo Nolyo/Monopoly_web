@@ -32,6 +32,21 @@ export function aiDecide(game, p, type, data) {
       if (tile.type === 'station' || tile.type === 'utility') return after >= 100;
       return after >= CASH_RESERVE;
     }
+    case 'auction': {
+      // Mêmes signaux que l'achat direct : l'IA se fixe un plafond privé
+      // selon la valeur stratégique de la case, puis surenchérit au minimum
+      // (pas de « sniping » : +10 € à chaque tour) tant que le plafond tient.
+      const { tile, currentBid, minRaise } = data;
+      let cap;
+      if (completesGroup(game, p, tile)) cap = Math.round(tile.price * 1.4);
+      else if (blocksOpponent(game, p, tile)) cap = Math.round(tile.price * 1.1);
+      else cap = Math.round(tile.price * 0.85);
+      // Réserve de liquidités : gares et compagnies méritent moins de sacrifice
+      const floor = (tile.type === 'station' || tile.type === 'utility') ? 100 : 150;
+      cap = Math.min(cap, p.money - floor);
+      const next = currentBid + minRaise;
+      return next <= cap ? next : null; // null = passe (définitif)
+    }
     case 'jail': {
       if (data.hasCard) return 'card';
       // En début de partie, mieux vaut sortir vite pour acheter ;

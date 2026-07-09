@@ -245,11 +245,16 @@ export class Game {
     if (tile.owner === null) {
       if (p.money >= tile.price) {
         const wants = await this.decide(p, 'buy', { idx, tile });
-        if (wants) await this.buyTile(p, idx);
-        else this.view.log(`${p.name} ne souhaite pas acheter ${tile.name}.`);
+        if (wants) {
+          await this.buyTile(p, idx);
+          return;
+        }
+        this.view.log(`${p.name} ne souhaite pas acheter ${tile.name}.`);
       } else {
         this.view.log(`${p.name} n'a pas les moyens d'acheter ${tile.name}.`);
       }
+      // Règle officielle : refus (ou fonds insuffisants) → mise aux enchères
+      await this.runAuction(idx);
       return;
     }
     if (tile.owner === p.id) return;
@@ -261,6 +266,68 @@ export class Game {
     const rent = this.rentOf(idx, diceSum);
     this.view.log(`${p.name} doit ${rent} € de loyer à ${owner.name}.`, 'bad');
     await this.charge(p, rent, owner, `le loyer de ${tile.name}`);
+  }
+
+  // Enchères ascendantes (règle officielle) : la case est proposée à TOUS les
+  // joueurs non en faillite, y compris celui qui vient de refuser l'achat.
+  // À chaque tour de table, chaque enchérisseur encore actif (et qui n'est pas
+  // déjà le plus offrant) surenchérit d'au moins 10 € ou passe — un joueur qui
+  // passe est éliminé pour le reste de l'enchère (simplification classique qui
+  // garantit la terminaison : les mises croissent strictement et l'argent est
+  // fini). Le gagnant paie sa mise, qui peut être inférieure OU supérieure au
+  // prix affiché de la case. Si personne n'enchérit, la case reste à la banque.
+  async runAuction(idx) {
+    const tile = this.tiles[idx];
+    const MIN_RAISE = 10;
+    this.view.log(`🔨 ${tile.name} est mis aux enchères !`);
+    let currentBid = 0;
+    let highestBidderId = null;
+    // Tour de table dans l'ordre de jeu, à partir du joueur courant
+    const order = [];
+    for (let k = 0; k < this.players.length; k++) {
+      const q = this.players[(this.current + k) % this.players.length];
+      if (!q.bankrupt) order.push(q);
+    }
+    const active = new Set(order.map((q) => q.id));
+    for (;;) {
+      for (const q of order) {
+        if (!active.has(q.id)) continue; // a déjà passé
+        if (q.id === highestBidderId) continue; // déjà le plus offrant
+        if (q.money < currentBid + MIN_RAISE) {
+          // Plus les moyens de surenchérir : sort de l'enchère
+          active.delete(q.id);
+          continue;
+        }
+        const bid = await this.decide(q, 'auction', {
+          idx,
+          tile,
+          currentBid,
+          minRaise: MIN_RAISE,
+          highestBidder: highestBidderId === null ? null : this.players[highestBidderId].name,
+        });
+        if (!Number.isInteger(bid) || bid < currentBid + MIN_RAISE || bid > q.money) {
+          active.delete(q.id); // passe : définitif
+          this.view.log(`${q.name} passe.`);
+          continue;
+        }
+        currentBid = bid;
+        highestBidderId = q.id;
+        this.view.log(`🔨 ${q.name} enchérit ${formatMoney(currentBid)} sur ${tile.name}.`);
+      }
+      // Fin quand il ne reste plus d'enchérisseur actif hormis le plus offrant
+      if ([...active].every((id) => id === highestBidderId)) break;
+    }
+    if (highestBidderId === null) {
+      this.view.log(`🔨 Personne n'enchérit pour ${tile.name} — la propriété reste à la banque.`);
+      return;
+    }
+    const winner = this.players[highestBidderId];
+    winner.money -= currentBid;
+    tile.owner = winner.id;
+    this.view.sfx?.('buy');
+    this.view.log(`🔨 ${winner.name} remporte ${tile.name} aux enchères pour ${formatMoney(currentBid)}.`, 'good');
+    this.view.setOwner(idx, winner);
+    this.view.updatePlayers();
   }
 
   async buyTile(p, idx) {

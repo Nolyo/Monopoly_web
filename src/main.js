@@ -154,6 +154,7 @@ async function startGame(configs, snapshot = null) {
 
     promptHuman(p, type, data) {
       if (type === 'buy') return ui.promptBuy(p, data.idx);
+      if (type === 'auction') return ui.promptAuction(p, data);
       if (type === 'jail') return ui.promptJail(p, data);
       return Promise.resolve(null);
     },
