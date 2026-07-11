@@ -50,3 +50,25 @@ function fakeBoard() {
   assert.equal(fx.tokenPos(1), null, 'pion hors scène → null');
   console.log('✅ effects.js : effets argent — création, animation, nettoyage OK');
 }
+
+// Effets de case : onde d'achat, pop du marqueur, chute des maisons
+{
+  const board = fakeBoard();
+  const marker = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 0.14));
+  board.scene.add(marker);
+  board.ownerMarkers.set(5, marker);
+  const houses = new THREE.Group();
+  houses.position.set(2, 0.05, 2);
+  board.scene.add(houses);
+  board.houseMeshes.set(5, houses);
+  const fx = new Effects(board);
+  const base = board.scene.children.length;
+  await fx.purchase(5, '#e0453a');
+  assert.equal(marker.scale.x, 1, "le marqueur retombe à l'échelle 1");
+  await fx.purchase(7, '#3a7de0'); // case sans marqueur : onde seule, sans erreur
+  await fx.buildDrop(5);
+  assert.equal(houses.position.y, 0.05, "les maisons retombent à leur hauteur d'origine");
+  await fx.buildDrop(7); // case sans constructions : no-op
+  assert.equal(board.scene.children.length, base, 'les effets de case nettoient la scène');
+  console.log('✅ effects.js : achat et construction — onde, pop, chute, nettoyage OK');
+}
