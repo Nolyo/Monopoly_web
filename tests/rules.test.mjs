@@ -228,3 +228,44 @@ console.log('✅ engine.js : enchères désactivables OK');
 }
 
 console.log('✅ engine.js : sérialisation des règles et de la cagnotte OK');
+
+// --- 8. UI : badge de cagnotte (fake-DOM) --------------------------------------
+{
+  // DOM minimal : ui.js ne touche au vrai DOM qu'à travers querySelector,
+  // createElement et addEventListener.
+  const makeEl = () => ({
+    textContent: '',
+    innerHTML: '',
+    style: {},
+    classList: {
+      set: new Set(['hidden']),
+      add(c) { this.set.add(c); },
+      remove(c) { this.set.delete(c); },
+      contains(c) { return this.set.has(c); },
+    },
+    addEventListener: () => {},
+    appendChild: () => {},
+    querySelector: () => null,
+    childElementCount: 0,
+  });
+  const els = new Map();
+  globalThis.document = {
+    querySelector: (sel) => {
+      if (!els.has(sel)) els.set(sel, makeEl());
+      return els.get(sel);
+    },
+    addEventListener: () => {},
+    createElement: () => makeEl(),
+  };
+  const { UI } = await import('../src/ui/ui.js');
+  const ui = new UI();
+  const badge = document.querySelector('#pot-badge');
+  assert.equal(badge.classList.contains('hidden'), true);
+  ui.setPot(350);
+  assert.equal(badge.textContent, '🅿️ Cagnotte : 350 €');
+  assert.equal(badge.classList.contains('hidden'), false);
+  ui.setPot(0);
+  assert.equal(badge.textContent, '🅿️ Cagnotte : 0 €');
+}
+
+console.log('✅ ui.js : badge de cagnotte OK');

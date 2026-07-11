@@ -29,6 +29,7 @@ export class UI {
     this.actionsEl = $('#actions');
     this.modalRoot = $('#modal-root');
     this.turnBanner = $('#turn-banner');
+    this.potBadge = $('#pot-badge');
     this.game = null;
     this.speed = 1;
 
@@ -101,6 +102,12 @@ export class UI {
   setTurnBanner(p) {
     this.turnBanner.innerHTML = `<span class="token-dot" style="background:${p.color}"></span> Tour de <b>${escapeHtml(p.name)}</b>`;
     this.turnBanner.style.borderColor = p.color;
+  }
+
+  // ------------------------------------------------- cagnotte du Parc Gratuit
+  setPot(amount) {
+    this.potBadge.textContent = `🅿️ Cagnotte : ${formatMoney(amount)}`;
+    this.potBadge.classList.remove('hidden');
   }
 
   // ------------------------------------------------- barre d'actions

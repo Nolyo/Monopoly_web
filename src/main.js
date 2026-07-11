@@ -155,6 +155,7 @@ async function startGame(configs, snapshot = null, rules = {}) {
   const view = {
     log: (msg, cls) => ui.log(msg, cls),
     updatePlayers: () => ui.updatePlayers(),
+    setPot: (amount) => ui.setPot(amount),
     sfx: (name) => playSound(name),
     fx: (type, data) => { try { fxHandlers[type]?.(data); } catch (e) { console.error('fx', type, e); } },
 
@@ -250,6 +251,7 @@ async function startGame(configs, snapshot = null, rules = {}) {
     });
   }
   ui.updatePlayers();
+  if (game.rules.freeParkingPot) ui.setPot(game.pot);
   if (snapshot) {
     const cur = game.players[game.current];
     ui.log(`📂 Partie reprise — au tour de ${cur.name} (tour n°${game.turnCount + 1}).`);

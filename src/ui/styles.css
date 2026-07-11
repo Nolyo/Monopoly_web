@@ -38,6 +38,17 @@ html, body {
   white-space: nowrap;
 }
 
+#pot-badge {
+  top: 62px; left: 50%; transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 5px 16px;
+  font-size: 13px;
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+}
+
 #players {
   top: 14px; left: 14px;
   display: flex; flex-direction: column; gap: 8px;
