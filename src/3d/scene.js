@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TILES, GROUP_COLORS } from '../game/data.js';
+import { Effects } from './effects.js';
 
 // ---------------------------------------------------------------------------
 // Géométrie du plateau : 12×12 unités, cases normales 1×1.5, coins 1.5×1.5.
@@ -267,6 +268,7 @@ export class Board3D {
     this.buildTable();
     this.buildBoard();
     this.buildDice();
+    this.effects = new Effects(this);
     this.tokens = [];
     this.houseMeshes = new Map(); // idx -> Group
     this.ownerMarkers = new Map(); // idx -> Mesh

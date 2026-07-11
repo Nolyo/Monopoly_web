@@ -108,10 +108,33 @@ async function startGame(configs, snapshot = null) {
 
   $('#speed').onchange = (e) => { scene.speed = Number(e.target.value); e.target.blur(); };
 
+  // Effets visuels 3D — fire-and-forget : le jeu ne les attend jamais.
+  // Garde : un pion retiré de la scène (faillite) annule l'effet en silence.
+  // `game` est déclaré plus bas : les handlers ne tournent qu'en cours de partie.
+  const fxHandlers = {
+    pay({ fromId, toId, amount }) {
+      const from = scene.effects.tokenPos(fromId);
+      if (!from) return;
+      if (toId === null) { scene.effects.bankPayment(from, amount); return; }
+      const to = scene.effects.tokenPos(toId);
+      if (to) scene.effects.moneyTransfer(from, to, amount);
+    },
+    gain({ playerId, amount }) {
+      const pos = scene.effects.tokenPos(playerId);
+      if (pos) scene.effects.gainBurst(pos, amount);
+    },
+    buy({ playerId, idx }) {
+      scene.effects.purchase(idx, game.players[playerId].color);
+    },
+    build({ idx }) { scene.effects.buildDrop(idx); },
+    jail({ playerId }) { scene.effects.jailFlash(playerId); },
+  };
+
   const view = {
     log: (msg, cls) => ui.log(msg, cls),
     updatePlayers: () => ui.updatePlayers(),
     sfx: (name) => playSound(name),
+    fx: (type, data) => { fxHandlers[type]?.(data); },
 
     async onTurnStart(p) {
       ui.setTurnBanner(p);
@@ -133,6 +156,7 @@ async function startGame(configs, snapshot = null) {
       playSound('dice');
       ui.log(`🎲 ${d1} + ${d2} = ${d1 + d2}`);
       await scene.rollDice(d1, d2);
+      if (d1 === d2) scene.effects.diceSparkles();
     },
 
     moveTokenSteps: (p, from, steps) => scene.moveTokenSteps(p.id, from, steps),
@@ -164,13 +188,20 @@ async function startGame(configs, snapshot = null) {
 
     async onBankruptcy(p, creditor) {
       playSound('bankrupt');
+      await scene.effects.bankruptcy(p.id);
       scene.removeToken(p.id);
       await ui.onBankruptcy(p, creditor);
     },
 
     managePhase: (p) => ui.managePhase(p),
     aiThink: (ms = 450) => scene.delay(ms),
-    announceWinner: (p) => { clearSave(); playSound('win'); return ui.announceWinner(p); },
+    async announceWinner(p) {
+      clearSave();
+      playSound('win');
+      scene.effects.confetti();
+      await scene.delay(900);
+      return ui.announceWinner(p);
+    },
   };
 
   const game = snapshot ? Game.fromSnapshot(snapshot, view) : new Game(configs, view);
