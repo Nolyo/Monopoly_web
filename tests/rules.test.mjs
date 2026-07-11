@@ -203,3 +203,28 @@ console.log('✅ engine.js : faillite envers la banque → liquide dans la cagno
 }
 
 console.log('✅ engine.js : enchères désactivables OK');
+
+// --- 7. Sérialisation : rules et pot survivent au round-trip ------------------
+{
+  const { view } = makeView();
+  const rules = { doubleGoSalary: true, freeParkingPot: true, auctions: false, startingMoney: 2000 };
+  const g = makeGame(view, rules);
+  g.pot = 130;
+  const snap = JSON.parse(JSON.stringify(g.serialize()));
+  const g2 = Game.fromSnapshot(snap, view);
+  assert.deepEqual(g2.rules, rules);
+  assert.equal(g2.pot, 130);
+}
+// vieille sauvegarde sans rules/pot → défauts officiels, pot vide
+{
+  const { view } = makeView();
+  const g = makeGame(view);
+  const snap = JSON.parse(JSON.stringify(g.serialize()));
+  delete snap.rules;
+  delete snap.pot;
+  const g2 = Game.fromSnapshot(snap, view);
+  assert.deepEqual(g2.rules, DEFAULT_RULES);
+  assert.equal(g2.pot, 0);
+}
+
+console.log('✅ engine.js : sérialisation des règles et de la cagnotte OK');

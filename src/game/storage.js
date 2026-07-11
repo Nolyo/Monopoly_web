@@ -7,6 +7,10 @@
 // `restoreDeck` (cards.js) et `Game.fromSnapshot` (engine.js), qui font
 // confiance à la forme des données une fois `loadGame()` passé et ne
 // re-valident rien elles-mêmes.
+//
+// Exception : l'ajout de champs OPTIONNELS munis d'une valeur de repli dans
+// Game.fromSnapshot (ex. `rules`, `pot`) reste compatible dans les deux sens
+// et ne nécessite pas de bump.
 
 const KEY = 'monopoly3d.save.v1';
 const VERSION = 1;

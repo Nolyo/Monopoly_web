@@ -57,18 +57,22 @@ export class Game {
         mortgaged: t.mortgaged,
       })),
       decks: { chance: this.chance.state(), chest: this.chest.state() },
+      rules: { ...this.rules },
+      pot: this.pot,
     };
   }
 
   static fromSnapshot(snap, view, rng = Math.random) {
     const configs = snap.players.map(({ name, color, isAI }) => ({ name, color, isAI }));
-    const game = new Game(configs, view, rng);
+    // snap.rules absent (vieille sauvegarde) → le défaut `rules = {}` s'applique
+    const game = new Game(configs, view, rng, snap.rules);
     snap.players.forEach((sp, i) => Object.assign(game.players[i], sp));
     snap.tiles.forEach((st, i) => Object.assign(game.tiles[i], st));
     game.chance = restoreDeck(CHANCE_CARDS, snap.decks.chance);
     game.chest = restoreDeck(CHEST_CARDS, snap.decks.chest);
     game.current = snap.current;
     game.turnCount = snap.turnCount;
+    game.pot = snap.pot ?? 0;
     return game;
   }
 
