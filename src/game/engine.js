@@ -277,8 +277,13 @@ export class Game {
       } else {
         this.view.log(`${p.name} n'a pas les moyens d'acheter ${tile.name}.`);
       }
-      // Règle officielle : refus (ou fonds insuffisants) → mise aux enchères
-      await this.runAuction(idx);
+      // Règle officielle : refus (ou fonds insuffisants) → mise aux enchères.
+      // Règle maison : sans enchères, la case reste simplement à la banque.
+      if (this.rules.auctions) {
+        await this.runAuction(idx);
+      } else {
+        this.view.log(`${tile.name} reste à la banque.`);
+      }
       return;
     }
     if (tile.owner === p.id) return;

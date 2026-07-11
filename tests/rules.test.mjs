@@ -182,3 +182,24 @@ console.log('✅ engine.js : gain de la cagnotte sur Parc Gratuit OK');
 }
 
 console.log('✅ engine.js : faillite envers la banque → liquide dans la cagnotte OK');
+
+// --- 6. Enchères désactivables ------------------------------------------------
+{
+  const { view, calls } = makeView({ promptHuman: async () => false });
+  const g = makeGame(view, { auctions: false });
+  const p = g.players[0]; // humain : refuse l'achat
+  await g.resolveOwnable(p, 1, 7);
+  assert.equal(g.tiles[1].owner, null);
+  assert.equal(p.money, 1500);
+  assert.ok(!calls.logs.some((m) => m.includes('mis aux enchères')));
+  assert.ok(calls.logs.some((m) => m.includes('reste à la banque')));
+}
+// règle officielle (défaut) : le refus déclenche bien l'enchère
+{
+  const { view, calls } = makeView({ promptHuman: async () => false });
+  const g = makeGame(view);
+  await g.resolveOwnable(g.players[0], 1, 7);
+  assert.ok(calls.logs.some((m) => m.includes('mis aux enchères')));
+}
+
+console.log('✅ engine.js : enchères désactivables OK');
