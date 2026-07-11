@@ -9,6 +9,19 @@ const $ = (sel) => document.querySelector(sel);
 const tileColor = (t) => (t.type === 'property' ? GROUP_COLORS[t.group]
   : t.type === 'station' ? '#2b2b2b' : '#6b6b3a');
 
+// Raccourcis clavier des modales : délai d'armement après ouverture, pour
+// qu'un appui destiné au panneau d'actions (dés, fin de tour) ne déclenche
+// pas un bouton de la modale qui vient d'apparaître.
+const MODAL_KEY_ARM_MS = 300;
+
+// Éléments qui consomment le clavier : aucun raccourci ne s'y applique
+// (un bouton focalisé répond déjà nativement à Espace/Entrée).
+const isTypingTarget = (el) => ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(el.tagName);
+
+// Pastille « touche » d'un bouton (même rendu que la barre d'actions)
+const KEY_NAMES = { ' ': 'Espace', escape: 'Échap' };
+const keyHintHtml = (key) => ` <span class="key-hint"><kbd>${KEY_NAMES[key] || key.toUpperCase()}</kbd></span>`;
+
 export class UI {
   constructor() {
     this.logEl = $('#log');
@@ -22,8 +35,7 @@ export class UI {
     // Raccourci clavier : Espace déclenche l'action principale (lancer les dés, fin du tour)
     document.addEventListener('keydown', (e) => {
       if (e.code !== 'Space' || e.repeat) return;
-      const tag = e.target.tagName;
-      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      if (isTypingTarget(e.target)) return;
       if (this.modalRoot.childElementCount > 0) return; // les modales ont leurs propres boutons
       const setup = document.querySelector('#setup');
       if (setup && !setup.classList.contains('hidden')) return; // partie non commencée
@@ -145,6 +157,10 @@ export class UI {
   }
 
   // ------------------------------------------------- modales
+  // Chaque bouton peut déclarer `keys` (valeurs de e.key, casse ignorée) ;
+  // le bouton `primary` répond aussi à Espace. Délai d'armement : voir
+  // MODAL_KEY_ARM_MS. L'écouteur clavier est retiré à la fermeture,
+  // quelle que soit la voie de sortie (bouton, touche, clic extérieur).
   showModal(html, buttons, { dismissable = false } = {}) {
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
@@ -154,18 +170,36 @@ export class UI {
       box.innerHTML = html;
       const bar = document.createElement('div');
       bar.className = 'modal-buttons';
+      const openedAt = performance.now();
+      const done = (value) => {
+        document.removeEventListener('keydown', onKey);
+        overlay.remove();
+        resolve(value);
+      };
+      const byKey = new Map();
       for (const b of buttons) {
         const btn = document.createElement('button');
         btn.className = `action-btn ${b.cls || ''}`;
-        btn.innerHTML = b.label;
-        btn.onclick = () => { overlay.remove(); resolve(b.value); };
+        const keys = (b.keys || []).map((k) => k.toLowerCase());
+        if (b.cls === 'primary') keys.unshift(' ');
+        btn.innerHTML = b.label + (keys.length ? keyHintHtml(keys[0]) : '');
+        btn.onclick = () => done(b.value);
+        for (const k of keys) byKey.set(k, btn);
         bar.appendChild(btn);
       }
+      const onKey = (e) => {
+        if (e.repeat || performance.now() - openedAt < MODAL_KEY_ARM_MS) return;
+        if (isTypingTarget(e.target)) return;
+        const btn = byKey.get(e.key.toLowerCase());
+        if (btn) { e.preventDefault(); btn.click(); return; }
+        if (dismissable && e.key === 'Escape') { e.preventDefault(); done(null); }
+      };
+      document.addEventListener('keydown', onKey);
       box.appendChild(bar);
       overlay.appendChild(box);
       if (dismissable) {
         overlay.addEventListener('click', (e) => {
-          if (e.target === overlay) { overlay.remove(); resolve(null); }
+          if (e.target === overlay) done(null);
         });
       }
       this.modalRoot.appendChild(overlay);
@@ -238,7 +272,7 @@ export class UI {
       `<h2>💼 ${escapeHtml(p.name)}, voulez-vous acheter ?</h2>${this.deedHtml(idx)}`,
       [
         { label: `Acheter (${formatMoney(t.price)})`, value: true, cls: 'primary' },
-        { label: 'Passer', value: false },
+        { label: 'Passer', value: false, keys: ['r', 'Escape'] },
       ],
     );
     return res === true;
