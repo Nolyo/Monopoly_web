@@ -182,6 +182,7 @@ export class Game {
     p.pos = JAIL_INDEX;
     this.view.sfx?.('jail');
     await this.view.teleportToken(p, JAIL_INDEX);
+    this.view.fx?.('jail', { playerId: p.id });
     this.view.updatePlayers();
   }
 
@@ -193,6 +194,7 @@ export class Game {
     if (passesGo) {
       p.money += GO_SALARY;
       this.view.sfx?.('cash');
+      this.view.fx?.('gain', { playerId: p.id, amount: GO_SALARY });
       this.view.log(`${p.name} passe par la case Départ et reçoit ${GO_SALARY} €.`, 'good');
       this.view.updatePlayers();
     }
@@ -328,6 +330,7 @@ export class Game {
     this.view.sfx?.('buy');
     this.view.log(`🔨 ${winner.name} remporte ${tile.name} aux enchères pour ${formatMoney(currentBid)}.`, 'good');
     this.view.setOwner(idx, winner);
+    this.view.fx?.('buy', { playerId: winner.id, idx });
     this.view.updatePlayers();
   }
 
@@ -338,6 +341,7 @@ export class Game {
     this.view.sfx?.('buy');
     this.view.log(`${p.name} achète ${tile.name} pour ${tile.price} €.`, 'good');
     this.view.setOwner(idx, p);
+    this.view.fx?.('buy', { playerId: p.id, idx });
     this.view.updatePlayers();
   }
 
@@ -391,6 +395,7 @@ export class Game {
         if (e.amount >= 0) {
           p.money += e.amount;
           this.view.sfx?.('cash');
+          this.view.fx?.('gain', { playerId: p.id, amount: e.amount });
           this.view.log(`${p.name} reçoit ${e.amount} €.`, 'good');
         } else {
           await this.charge(p, -e.amount, null, 'la carte');
@@ -445,6 +450,7 @@ export class Game {
       p.money -= amount;
       if (toPlayer) toPlayer.money += amount;
       this.view.sfx?.('pay');
+      this.view.fx?.('pay', { fromId: p.id, toId: toPlayer ? toPlayer.id : null, amount });
       this.view.updatePlayers();
       return;
     }
@@ -542,6 +548,7 @@ export class Game {
     this.view.sfx?.('build');
     this.view.log(`${p.name} construit ${t.houses === 5 ? 'un hôtel' : 'une maison'} sur ${t.name}.`, 'good');
     this.view.setHouses(idx, t.houses);
+    this.view.fx?.('build', { idx });
     this.view.updatePlayers();
     return true;
   }
@@ -684,6 +691,8 @@ export class Game {
       if (this.tiles[i].mortgaged) mortgagedMoved = true;
       this.view.setOwner(i, from);
     }
+    if (giveMoney > 0) this.view.fx?.('pay', { fromId, toId, amount: giveMoney });
+    if (takeMoney > 0) this.view.fx?.('pay', { fromId: toId, toId: fromId, amount: takeMoney });
     if (giveMoney > 0 || takeMoney > 0) this.view.sfx?.('cash');
     this.view.log(
       `🔁 ${from.name} échange ${this.formatTradeSide(giveTiles, giveMoney)} contre ${this.formatTradeSide(takeTiles, takeMoney)} avec ${to.name}.`,
