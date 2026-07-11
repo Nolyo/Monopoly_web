@@ -111,7 +111,7 @@ export class UI {
       btn.className = `action-btn ${b.cls || ''}`;
       btn.innerHTML = b.label;
       if (b.cls === 'primary' && !b.disabled) {
-        btn.innerHTML += ' <span class="key-hint"><kbd>Espace</kbd></span>';
+        btn.innerHTML += keyHintHtml(' ');
       }
       btn.disabled = !!b.disabled;
       // blur après clic : sinon Espace réactiverait le bouton resté focalisé
@@ -361,7 +361,7 @@ export class UI {
     const buttons = [];
     if (data.hasCard) buttons.push({ label: '🎫 Utiliser ma carte', value: 'card', cls: 'primary' });
     if (data.canPay) buttons.push({ label: '💶 Payer 50 €', value: 'pay', cls: data.hasCard ? '' : 'primary' });
-    buttons.push({ label: '🎲 Tenter un double', value: 'roll' });
+    buttons.push({ label: '🎲 Tenter un double', value: 'roll', cls: !data.hasCard && !data.canPay ? 'primary' : '' });
     const res = await this.showModal(
       `<h2>🔒 ${escapeHtml(p.name)}, vous êtes en prison</h2>
        <p>Tentative ${data.turn}/3. Comment voulez-vous sortir ?</p>`,
@@ -493,7 +493,7 @@ export class UI {
       const btn = document.createElement('button');
       btn.className = `action-btn ${cls}`;
       btn.textContent = label;
-      btn.onclick = onClick;
+      btn.onclick = () => { btn.blur(); onClick(); };
       bar.appendChild(btn);
       return btn;
     };
