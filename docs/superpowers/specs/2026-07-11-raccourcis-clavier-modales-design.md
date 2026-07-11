@@ -70,8 +70,8 @@ valider les cartes Chance/Caisse, choisir en prison, enchérir — sans toucher 
 
 ## Tests
 
-Vérification manuelle du flux complet au clavier (le projet n'a pas de suite de tests
-automatisés) :
+Vérification manuelle du flux complet au clavier (la suite de tests node du projet
+couvre le moteur de jeu, pas l'UI DOM ; `npm test` sert de non-régression moteur) :
 
 1. Espace pour lancer les dés → tomber sur une propriété libre → Espace achète.
 2. Même flux → R (puis Échap) refuse et l'enchère se lance.
