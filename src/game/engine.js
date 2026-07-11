@@ -263,7 +263,7 @@ export class Game {
         }
         break;
       default:
-        break; // Départ, simple visite, parc gratuit
+        break; // simple visite
     }
     this.view.updatePlayers();
   }
