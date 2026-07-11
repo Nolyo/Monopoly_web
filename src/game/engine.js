@@ -239,6 +239,14 @@ export class Game {
         this.view.log(`${p.name} est envoyé en prison !`, 'bad');
         await this.sendToJail(p);
         break;
+      case 'go':
+        if (this.rules.doubleGoSalary) {
+          p.money += GO_SALARY;
+          this.view.sfx?.('cash');
+          this.view.fx?.('gain', { playerId: p.id, amount: GO_SALARY });
+          this.view.log(`${p.name} s'arrête pile sur la case Départ : salaire doublé (+${GO_SALARY} €) !`, 'good');
+        }
+        break;
       default:
         break; // Départ, simple visite, parc gratuit
     }

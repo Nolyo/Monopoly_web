@@ -56,3 +56,45 @@ function makeGame(view, rules, configs) {
 assert.ok(STARTING_MONEY_PRESETS.includes(DEFAULT_RULES.startingMoney));
 
 console.log('✅ engine.js : règles par défaut et argent de départ configurable OK');
+
+// --- 2. Double salaire : arrêt pile sur Départ -------------------------------
+{
+  const { view } = makeView();
+  const g = makeGame(view, { doubleGoSalary: true });
+  const p = g.players[0];
+  p.pos = 35;
+  await g.moveBy(p, 5); // passe ET s'arrête sur Départ
+  await g.resolveTile(p, 5);
+  assert.equal(p.money, 1500 + 400); // 200 (passage) + 200 (bonus)
+}
+{
+  const { view } = makeView();
+  const g = makeGame(view, { doubleGoSalary: true });
+  const p = g.players[0];
+  p.pos = 30;
+  await g.moveBy(p, 20); // passe Départ, s'arrête sur Prison (simple visite)
+  await g.resolveTile(p, 20);
+  assert.equal(p.pos, 10);
+  assert.equal(p.money, 1500 + 200); // passage simple : pas de bonus
+}
+{
+  const { view } = makeView();
+  const g = makeGame(view); // règle inactive
+  const p = g.players[0];
+  p.pos = 35;
+  await g.moveBy(p, 5);
+  await g.resolveTile(p, 5);
+  assert.equal(p.money, 1500 + 200);
+}
+// Arrivée par carte « Avancez jusqu'à la case Départ » : même chemin (moveTo)
+{
+  const { view } = makeView();
+  const g = makeGame(view, { doubleGoSalary: true });
+  const p = g.players[0];
+  p.pos = 24;
+  await g.moveTo(p, 0);
+  await g.resolveTile(p, 7);
+  assert.equal(p.money, 1500 + 400);
+}
+
+console.log('✅ engine.js : double salaire sur arrêt pile OK');
