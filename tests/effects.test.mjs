@@ -72,3 +72,19 @@ function fakeBoard() {
   assert.equal(board.scene.children.length, base, 'les effets de case nettoient la scène');
   console.log('✅ effects.js : achat et construction — onde, pop, chute, nettoyage OK');
 }
+
+// Effets événements : prison, doubles, confettis, faillite
+{
+  const board = fakeBoard();
+  const fx = new Effects(board);
+  const base = board.scene.children.length;
+  await fx.jailFlash(0);
+  await fx.jailFlash(9); // joueur sans pion : no-op silencieux
+  await fx.diceSparkles();
+  await fx.confetti();
+  await fx.bankruptcy(0);
+  assert.ok(board.tokens[0].position.y < 0, 'le pion a coulé sous le plateau');
+  await fx.bankruptcy(9); // joueur sans pion : no-op silencieux
+  assert.equal(board.scene.children.length, base, 'les effets événements nettoient la scène');
+  console.log('✅ effects.js : prison, dés, confettis, faillite — nettoyage OK');
+}

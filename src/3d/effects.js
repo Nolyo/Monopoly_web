@@ -25,6 +25,18 @@ const DUST_MAT = new THREE.MeshBasicMaterial({
   color: '#c9bfa8', transparent: true, opacity: 0.5, depthWrite: false,
 });
 
+const SMOKE_MAT = new THREE.MeshBasicMaterial({
+  color: '#8a8f96', transparent: true, opacity: 0.55, depthWrite: false,
+});
+const BAR_GEO = new THREE.BoxGeometry(0.05, 0.9, 0.05);
+const BAR_MAT = new THREE.MeshStandardMaterial({
+  color: '#5a616b', metalness: 0.8, roughness: 0.35, transparent: true, opacity: 0.95,
+});
+const SPARK_GEO = new THREE.OctahedronGeometry(0.06);
+const SPARK_MAT = new THREE.MeshBasicMaterial({ color: '#ffd75e', transparent: true, depthWrite: false });
+const CONFETTI_GEO = new THREE.PlaneGeometry(0.12, 0.07);
+const CONFETTI_COLORS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#e67e22'];
+
 export class Effects {
   constructor(board) {
     this.board = board;
@@ -233,5 +245,119 @@ export class Effects {
       }),
     );
     return Promise.all([drop, dust]);
+  }
+
+  // Prison : gyrophare rouge/bleu + barres qui tombent autour du pion
+  async jailFlash(playerIdx) {
+    const pos = this.tokenPos(playerIdx);
+    if (!pos) return;
+    const light = new THREE.PointLight('#ff2a2a', 0, 6);
+    light.position.set(pos.x, 1.6, pos.z);
+    this.scene.add(light);
+    const flash = this.tween(1400, (t) => {
+      light.intensity = 30 * Math.abs(Math.sin(t * Math.PI * 6)) * (1 - t * 0.4);
+      light.color.set(Math.floor(t * 6) % 2 === 0 ? '#ff2a2a' : '#2a52ff');
+    }, null).then(() => this.scene.remove(light));
+    const barMat = BAR_MAT.clone();
+    const bars = [];
+    for (let i = 0; i < 4; i++) {
+      const bar = new THREE.Mesh(BAR_GEO, barMat);
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const x = pos.x + Math.cos(a) * 0.34;
+      const z = pos.z + Math.sin(a) * 0.34;
+      bar.position.set(x, 2.6, z);
+      bars.push({ bar, x, z });
+      this.scene.add(bar);
+    }
+    const drop = this.tween(420, (t) => {
+      for (const b of bars) b.bar.position.set(b.x, 0.45 + (1 - t) * 2.2, b.z);
+    })
+      .then(() => this.board.delay(650))
+      .then(() => this.tween(350, (t) => { barMat.opacity = 0.95 * (1 - t); }))
+      .then(() => {
+        for (const b of bars) this.scene.remove(b.bar);
+        barMat.dispose();
+      });
+    await Promise.all([flash, drop]);
+  }
+
+  // Faillite : le pion s'enfonce dans le plateau en tournant, avec une fumée
+  // grise. La vue DOIT awaiter cet effet avant removeToken.
+  async bankruptcy(playerIdx) {
+    const token = this.board.tokens[playerIdx];
+    if (!token || !token.parent) return;
+    const smoke = this.poof(token.position.x, token.position.z, {
+      mat: SMOKE_MAT, count: 10, duration: 1000, radius: 0.2, rise: 1.1, grow: 2.5,
+    });
+    await this.tween(1300, (t) => {
+      token.rotation.y = t * Math.PI * 4;
+      token.position.y = 0.03 - t * 0.9;
+      token.scale.setScalar(Math.max(0.001, 1.15 * (1 - t * 0.6)));
+    });
+    await smoke;
+  }
+
+  // Doubles : étincelles dorées projetées depuis chaque dé visible
+  diceSparkles() {
+    const anims = [];
+    for (const die of this.board.dice) {
+      if (!die.visible) continue;
+      for (let i = 0; i < 10; i++) {
+        const mat = SPARK_MAT.clone();
+        const spark = new THREE.Mesh(SPARK_GEO, mat);
+        const dir = new THREE.Vector3(
+          (Math.random() - 0.5) * 2,
+          0.5 + Math.random() * 1.5,
+          (Math.random() - 0.5) * 2,
+        );
+        spark.position.copy(die.position);
+        this.scene.add(spark);
+        anims.push(this.tween(550, (t) => {
+          spark.position.set(
+            die.position.x + dir.x * t,
+            die.position.y + dir.y * t - 1.2 * t * t,
+            die.position.z + dir.z * t,
+          );
+          spark.rotation.set(t * 7, t * 5, 0);
+          mat.opacity = 1 - t;
+        }, null).then(() => {
+          this.scene.remove(spark);
+          mat.dispose();
+        }));
+      }
+    }
+    return Promise.all(anims);
+  }
+
+  // Victoire : pluie de confettis qui virevoltent sur tout le plateau
+  confetti() {
+    const anims = [];
+    for (let i = 0; i < 150; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        side: THREE.DoubleSide, transparent: true,
+      });
+      const piece = new THREE.Mesh(CONFETTI_GEO, mat);
+      const x = (Math.random() - 0.5) * 13;
+      const z = (Math.random() - 0.5) * 13;
+      const y0 = 7 + Math.random() * 5;
+      const drift = (Math.random() - 0.5) * 1.6;
+      const rot = { x: Math.random() * 8, y: Math.random() * 8, z: Math.random() * 8 };
+      const flutter = 2 + Math.random() * 2;
+      this.scene.add(piece);
+      anims.push(this.tween(2400 + Math.random() * 1600, (t) => {
+        piece.position.set(
+          x + Math.sin(t * Math.PI * flutter) * 0.35 + drift * t,
+          y0 * (1 - t) + 0.04 * t,
+          z,
+        );
+        piece.rotation.set(rot.x * t, rot.y * t, rot.z * t);
+        mat.opacity = t > 0.9 ? (1 - t) / 0.1 : 1;
+      }, null).then(() => {
+        this.scene.remove(piece);
+        mat.dispose();
+      }));
+    }
+    return Promise.all(anims);
   }
 }
