@@ -283,6 +283,7 @@ export class UI {
   // Résout avec le montant misé (entier) ou null si le joueur passe (définitif).
   promptAuction(p, { idx, currentBid, minRaise, highestBidder }) {
     return new Promise((resolve) => {
+      const openedAt = performance.now();
       const t = this.game.tiles[idx];
       const minBid = currentBid + minRaise;
       const overlay = document.createElement('div');
@@ -311,7 +312,11 @@ export class UI {
         </label>`;
       const bar = document.createElement('div');
       bar.className = 'modal-buttons';
-      const done = (value) => { overlay.remove(); resolve(value); };
+      const done = (value) => {
+        document.removeEventListener('keydown', onKey);
+        overlay.remove();
+        resolve(value);
+      };
       const passBtn = document.createElement('button');
       passBtn.className = 'action-btn';
       passBtn.textContent = 'Passer (définitif)';
@@ -319,7 +324,7 @@ export class UI {
       bar.appendChild(passBtn);
       const bidBtn = document.createElement('button');
       bidBtn.className = 'action-btn primary';
-      bidBtn.textContent = 'Enchérir';
+      bidBtn.innerHTML = `Enchérir${keyHintHtml(' ')}`;
       bar.appendChild(bidBtn);
       box.appendChild(bar);
 
@@ -338,6 +343,15 @@ export class UI {
       box.querySelectorAll('.auction-raise').forEach((btn) => {
         btn.onclick = () => done(Number(btn.dataset.bid));
       });
+      // Espace = enchérir à la mise affichée. Volontairement AUCUN raccourci
+      // pour « Passer (définitif) » : geste irréversible, réservé à la souris.
+      const onKey = (e) => {
+        if (e.repeat || performance.now() - openedAt < MODAL_KEY_ARM_MS) return;
+        if (isTypingTarget(e.target) || e.key !== ' ') return;
+        e.preventDefault();
+        if (!bidBtn.disabled) bidBtn.click();
+      };
+      document.addEventListener('keydown', onKey);
       overlay.appendChild(box);
       this.modalRoot.appendChild(overlay);
     });
