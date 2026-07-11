@@ -98,3 +98,87 @@ console.log('✅ engine.js : règles par défaut et argent de départ configurab
 }
 
 console.log('✅ engine.js : double salaire sur arrêt pile OK');
+
+// --- 3. Cagnotte : alimentée par les pénalités uniquement --------------------
+{
+  const { view, calls } = makeView();
+  const g = makeGame(view, { freeParkingPot: true });
+  const p = g.players[0];
+  p.pos = 4; // Impôts sur le revenu (200 €)
+  await g.resolveTile(p, 3);
+  assert.equal(p.money, 1300);
+  assert.equal(g.pot, 200);
+  assert.deepEqual(calls.setPot, [200]);
+  assert.ok(calls.logs.some((m) => m.includes('cagnotte')));
+}
+// un loyer joueur → joueur ne va PAS dans la cagnotte
+{
+  const { view } = makeView();
+  const g = makeGame(view, { freeParkingPot: true });
+  await g.charge(g.players[0], 50, g.players[1], 'le loyer');
+  assert.equal(g.pot, 0);
+  assert.equal(g.players[1].money, 1550);
+}
+// règle inactive : la taxe disparaît à la banque comme avant
+{
+  const { view, calls } = makeView();
+  const g = makeGame(view);
+  const p = g.players[0];
+  p.pos = 4;
+  await g.resolveTile(p, 3);
+  assert.equal(p.money, 1300);
+  assert.equal(g.pot, 0);
+  assert.deepEqual(calls.setPot, []);
+}
+
+console.log('✅ engine.js : cagnotte alimentée par les pénalités uniquement OK');
+
+// --- 4. Cagnotte : gain sur Parc Gratuit -------------------------------------
+{
+  const { view, calls } = makeView();
+  const g = makeGame(view, { freeParkingPot: true });
+  const p = g.players[0];
+  g.pot = 350;
+  p.pos = 20; // Parc Gratuit
+  await g.resolveTile(p, 5);
+  assert.equal(p.money, 1850);
+  assert.equal(g.pot, 0);
+  assert.deepEqual(calls.setPot, [0]);
+  assert.ok(calls.logs.some((m) => m.includes('remporte la cagnotte')));
+}
+// cagnotte vide : rien ne se passe
+{
+  const { view, calls } = makeView();
+  const g = makeGame(view, { freeParkingPot: true });
+  const p = g.players[0];
+  p.pos = 20;
+  await g.resolveTile(p, 5);
+  assert.equal(p.money, 1500);
+  assert.deepEqual(calls.setPot, []);
+}
+// règle inactive : Parc Gratuit reste une case neutre
+{
+  const { view } = makeView();
+  const g = makeGame(view);
+  g.pot = 0;
+  const p = g.players[0];
+  p.pos = 20;
+  await g.resolveTile(p, 5);
+  assert.equal(p.money, 1500);
+}
+
+console.log('✅ engine.js : gain de la cagnotte sur Parc Gratuit OK');
+
+// --- 5. Cagnotte : faillite envers la banque ----------------------------------
+{
+  const { view } = makeView();
+  const g = makeGame(view, { freeParkingPot: true });
+  const p = g.players[0];
+  p.money = 80; // sans patrimoine : faillite inévitable
+  await g.charge(p, 200, null, 'la taxe');
+  assert.equal(p.bankrupt, true);
+  assert.equal(p.money, 0);
+  assert.equal(g.pot, 80); // le liquide restant va dans la cagnotte
+}
+
+console.log('✅ engine.js : faillite envers la banque → liquide dans la cagnotte OK');

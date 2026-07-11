@@ -247,6 +247,17 @@ export class Game {
           this.view.log(`${p.name} s'arrête pile sur la case Départ : salaire doublé (+${GO_SALARY} €) !`, 'good');
         }
         break;
+      case 'parking':
+        if (this.rules.freeParkingPot && this.pot > 0) {
+          const won = this.pot;
+          this.pot = 0;
+          p.money += won;
+          this.view.sfx?.('cash');
+          this.view.fx?.('gain', { playerId: p.id, amount: won });
+          this.view.setPot?.(0);
+          this.view.log(`🅿️ ${p.name} remporte la cagnotte du Parc Gratuit : ${formatMoney(won)} !`, 'good');
+        }
+        break;
       default:
         break; // Départ, simple visite, parc gratuit
     }
@@ -459,7 +470,14 @@ export class Game {
     }
     if (p.money >= amount) {
       p.money -= amount;
-      if (toPlayer) toPlayer.money += amount;
+      if (toPlayer) {
+        toPlayer.money += amount;
+      } else if (this.rules.freeParkingPot) {
+        // Règle maison : les pénalités versées à la banque alimentent la cagnotte
+        this.pot += amount;
+        this.view.setPot?.(this.pot);
+        this.view.log(`💰 ${formatMoney(amount)} rejoignent la cagnotte du Parc Gratuit (total : ${formatMoney(this.pot)}).`);
+      }
       this.view.sfx?.('pay');
       this.view.fx?.('pay', { fromId: p.id, toId: toPlayer ? toPlayer.id : null, amount });
       this.view.updatePlayers();
@@ -481,7 +499,14 @@ export class Game {
   async declareBankruptcy(p, creditor, reason) {
     p.bankrupt = true;
     this.view.log(`💀 ${p.name} est en faillite (impossible de payer ${reason}) !`, 'bad');
-    if (creditor) creditor.money += p.money;
+    if (creditor) {
+      creditor.money += p.money;
+    } else if (this.rules.freeParkingPot && p.money > 0) {
+      // La dette était destinée à la cagnotte : le liquide restant y va aussi
+      this.pot += p.money;
+      this.view.setPot?.(this.pot);
+      this.view.log(`💰 Les ${formatMoney(p.money)} restants rejoignent la cagnotte du Parc Gratuit.`);
+    }
     p.money = 0;
     for (const i of this.ownedTiles(p.id)) {
       const t = this.tiles[i];
