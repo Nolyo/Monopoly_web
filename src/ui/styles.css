@@ -379,6 +379,24 @@ html, body {
   box-shadow: 0 4px 14px rgba(224, 69, 58, 0.4);
 }
 
+#rules-box {
+  margin: 4px 0 18px;
+  text-align: left;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.rules-title { font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+.rule-row {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 14px; cursor: pointer;
+}
+.rule-row input[type="checkbox"] { accent-color: #e0453a; width: 16px; height: 16px; }
+.rule-row select {
+  margin-left: auto;
+  background: #1d2733; color: var(--text);
+  border: 1px solid var(--panel-border); border-radius: 8px;
+  padding: 5px 8px; font-family: inherit; font-size: 13px;
+}
+
 #player-rows { display: flex; flex-direction: column; gap: 9px; margin-bottom: 24px; }
 .player-row { display: flex; align-items: center; gap: 10px; }
 .player-row input {

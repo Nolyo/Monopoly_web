@@ -1,7 +1,9 @@
 import { Board3D } from './3d/scene.js';
 import { Game } from './game/engine.js';
 import { UI, escapeHtml } from './ui/ui.js';
-import { PLAYER_COLORS } from './game/data.js';
+import {
+  PLAYER_COLORS, STARTING_MONEY_PRESETS, DEFAULT_RULES, formatMoney,
+} from './game/data.js';
 import { saveGame, loadGame, clearSave } from './game/storage.js';
 import { initSounds, playSound, toggleMute, isMuted } from './ui/sound.js';
 
@@ -59,6 +61,20 @@ function renderPlayerRows() {
 renderCountButtons();
 renderPlayerRows();
 
+// Remplit le sélecteur d'argent de départ (préréglages, défaut officiel)
+function renderMoneySelect() {
+  const sel = $('#rule-starting-money');
+  for (const amount of STARTING_MONEY_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = amount;
+    opt.textContent = amount === DEFAULT_RULES.startingMoney
+      ? `${formatMoney(amount)} (officiel)` : formatMoney(amount);
+    if (amount === DEFAULT_RULES.startingMoney) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+renderMoneySelect();
+
 // S'il existe une partie sauvegardée, proposer de la reprendre
 const save = loadGame();
 if (save) {
@@ -87,16 +103,22 @@ $('#start-btn').onclick = () => {
     isAI: row.querySelector('select').value === 'ai',
     color: PLAYER_COLORS[i].hex,
   }));
+  const rules = {
+    doubleGoSalary: $('#rule-double-go').checked,
+    freeParkingPot: $('#rule-parking-pot').checked,
+    auctions: $('#rule-auctions').checked,
+    startingMoney: Number($('#rule-starting-money').value),
+  };
   $('#setup').classList.add('hidden');
   $('#hud').classList.remove('hidden');
-  startGame(configs);
+  startGame(configs, null, rules);
 };
 
 // ---------------------------------------------------------------------------
 // Lancement de la partie : moteur ↔ scène 3D ↔ UI
 // ---------------------------------------------------------------------------
 
-async function startGame(configs, snapshot = null) {
+async function startGame(configs, snapshot = null, rules = {}) {
   const scene = new Board3D($('#app'));
   const ui = new UI();
 
@@ -204,7 +226,7 @@ async function startGame(configs, snapshot = null) {
     },
   };
 
-  const game = snapshot ? Game.fromSnapshot(snapshot, view) : new Game(configs, view);
+  const game = snapshot ? Game.fromSnapshot(snapshot, view) : new Game(configs, view, Math.random, rules);
   game.onAutoSave = saveGame;
   ui.bind(game);
 
@@ -232,7 +254,7 @@ async function startGame(configs, snapshot = null) {
     const cur = game.players[game.current];
     ui.log(`📂 Partie reprise — au tour de ${cur.name} (tour n°${game.turnCount + 1}).`);
   } else {
-    ui.log('🎩 La partie commence ! Chaque joueur reçoit 1 500 €.');
+    ui.log(`🎩 La partie commence ! Chaque joueur reçoit ${formatMoney(game.rules.startingMoney)}.`);
   }
   await scene.introCamera();
   game.run();
