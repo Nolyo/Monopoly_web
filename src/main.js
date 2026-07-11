@@ -134,7 +134,7 @@ async function startGame(configs, snapshot = null) {
     log: (msg, cls) => ui.log(msg, cls),
     updatePlayers: () => ui.updatePlayers(),
     sfx: (name) => playSound(name),
-    fx: (type, data) => { fxHandlers[type]?.(data); },
+    fx: (type, data) => { try { fxHandlers[type]?.(data); } catch (e) { console.error('fx', type, e); } },
 
     async onTurnStart(p) {
       ui.setTurnBanner(p);
