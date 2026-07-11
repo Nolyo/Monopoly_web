@@ -84,6 +84,17 @@ export const JAIL_FINE = 50;
 export const JAIL_INDEX = 10;
 export const STARTING_MONEY = 1500;
 
+// Règles maison. DEFAULT_RULES reproduit exactement les règles officielles :
+// une partie créée sans configuration se comporte comme avant.
+export const DEFAULT_RULES = {
+  doubleGoSalary: false, // s'arrêter pile sur Départ rapporte un second salaire
+  freeParkingPot: false, // les pénalités alimentent une cagnotte gagnée sur Parc Gratuit
+  auctions: true, // règle officielle : refus d'achat → mise aux enchères
+  startingMoney: STARTING_MONEY,
+};
+
+export const STARTING_MONEY_PRESETS = [1000, 1500, 2000, 2500];
+
 export const PLAYER_COLORS = [
   { name: 'Rouge', hex: '#e0453a' },
   { name: 'Bleu', hex: '#3a7de0' },

@@ -1,5 +1,5 @@
 import {
-  TILES, GROUPS, GO_SALARY, JAIL_FINE, JAIL_INDEX, STARTING_MONEY, formatMoney,
+  TILES, GROUPS, GO_SALARY, JAIL_FINE, JAIL_INDEX, DEFAULT_RULES, formatMoney,
 } from './data.js';
 import { CHANCE_CARDS, CHEST_CARDS, makeDeck, restoreDeck } from './cards.js';
 import { aiDecide, aiManage } from './ai.js';
@@ -7,16 +7,19 @@ import { aiDecide, aiManage } from './ai.js';
 // Moteur de jeu. Toute l'interaction (3D + UI) passe par l'interface `view`,
 // dont les méthodes retournent des promesses (animations, choix du joueur).
 export class Game {
-  constructor(playerConfigs, view, rng = Math.random) {
+  constructor(playerConfigs, view, rng = Math.random, rules = {}) {
     this.view = view;
     this.rng = rng;
+    // Merge avec les défauts : tolère les objets partiels (vieilles sauvegardes)
+    this.rules = { ...DEFAULT_RULES, ...rules };
+    this.pot = 0; // cagnotte du Parc Gratuit (reste à 0 si la règle est inactive)
     this.tiles = TILES.map((t) => ({ ...t, owner: null, houses: 0, mortgaged: false }));
     this.players = playerConfigs.map((cfg, i) => ({
       id: i,
       name: cfg.name,
       color: cfg.color,
       isAI: cfg.isAI,
-      money: STARTING_MONEY,
+      money: this.rules.startingMoney,
       pos: 0,
       inJail: false,
       jailTurns: 0,
