@@ -125,8 +125,13 @@ restauration).
   loyer (`pay` avec bons ids/montant), taxe (`toId` null), achat (`buy`), enchère
   (`buy`), construction (`build`), prison (`jail`), anniversaire (un `pay` par
   payeur), salaire Départ (`gain`), échange avec argent (`pay`) ; et n'émet **pas**
-  `pay` quand le payeur fait faillite. Aucun test n'importe `scene.js` ni
-  `effects.js` (ils touchent `document`).
+  `pay` quand le payeur fait faillite.
+- Nouveau `tests/effects.test.mjs` (fumigation) : `effects.js` n'accédant au DOM
+  qu'à l'exécution (jamais au niveau module), il est importable en Node avec un
+  `document` factice. Un plateau factice (vraie `THREE.Scene`, tween instantané)
+  permet de vérifier que chaque effet aboutit et **nettoie la scène** derrière
+  lui — seule couverture automatique possible de ce code avant la passe visuelle.
+  `ui.js` reste, lui, hors des tests.
 - Dans le navigateur (serveur de dev) : passe visuelle utilisateur — loyer entre
   joueurs, taxe, achat, construction, prison, doubles, faillite, victoire, reprise
   de sauvegarde sans effet parasite.
